@@ -37,7 +37,26 @@ def retrieve_baseline(db_conn, prod_id):
     os.makedirs(extractdir)
 
     with tarfile.open(data_fl.name, "r:gz") as tgz:
-        tgz.extractall(extractdir)
+        def is_within_directory(directory, target):
+            
+            abs_directory = os.path.abspath(directory)
+            abs_target = os.path.abspath(target)
+        
+            prefix = os.path.commonprefix([abs_directory, abs_target])
+            
+            return prefix == abs_directory
+        
+        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+        
+            for member in tar.getmembers():
+                member_path = os.path.join(path, member.name)
+                if not is_within_directory(path, member_path):
+                    raise Exception("Attempted Path Traversal in Tar File")
+        
+            tar.extractall(path, members, numeric_owner=numeric_owner) 
+            
+        
+        safe_extract(tgz, extractdir)
         tgz.close()
     os.unlink(data_fl.name)
     # Depends on how we pack, but the first sibling named "buildhistory" should be it.
