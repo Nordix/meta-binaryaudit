@@ -4,7 +4,7 @@ inherit insane
 
 BUILDHISTORY_FEATURES += "abicheck"
 
-DEPENDS_append_class-target = " libabigail-native"
+DEPENDS:append:class-target = "${@ ' libabigail-native' if d.getVar('ABI_CHECK_SKIP') != '1' else ''}"
 
 IMG_DIR="${WORKDIR}/image"
 
@@ -51,7 +51,7 @@ python binary_audit_gather_abixml() {
 }
 
 # Target binaries are the only interest.
-do_install[postfuncs] += "${@ "binary_audit_gather_abixml" if ("class-target" == d.getVar("CLASSOVERRIDE")) else "" }"
+do_install[postfuncs] += "${@ 'binary_audit_gather_abixml' if (d.getVar('CLASSOVERRIDE') == 'class-target' and d.getVar('ABI_CHECK_SKIP') != '1') else ''}"
 do_install[vardepsexclude] += "${@ "binary_audit_gather_abixml" if ("class-target" == d.getVar("CLASSOVERRIDE")) else "" }"
 
 QARECIPETEST[abi-changed] = "package_qa_binary_audit_abixml_compare_to_ref"

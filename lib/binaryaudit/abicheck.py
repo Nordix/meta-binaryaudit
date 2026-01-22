@@ -15,10 +15,12 @@ def is_elf(fn):
 
 
 def get_soname_from_xml(xml):
-    r = ElementTree.fromstring(xml)
+    if not xml or not xml.startswith('<'):
+        return ""
     try:
+        r = ElementTree.fromstring(xml)
         return r.attrib["soname"]
-    except (AttributeError, KeyError):
+    except (ElementTree.ParseError, AttributeError, KeyError):
         return ""
 
 
