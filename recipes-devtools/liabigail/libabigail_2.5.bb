@@ -10,7 +10,12 @@ LIC_FILES_CHKSUM = "file://LICENSE.txt;md5=0bcd48c3bdfef0c9d9fd17726e4b7dab"
 
 DEPENDS += "elfutils libxml2"
 
-S = "${WORKDIR}/libabigail-${PV}"
+python __anonymous() {
+    if d.getVar("UNPACKDIR"):
+        d.setVar("S", "${UNPACKDIR}/libabigail-${PV}")
+    else:
+        d.setVar("S", "${WORKDIR}/libabigail-${PV}")
+}
 
 inherit autotools pkgconfig
 
