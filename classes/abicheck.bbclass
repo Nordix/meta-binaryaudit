@@ -6,7 +6,7 @@ BUILDHISTORY_FEATURES += "abicheck"
 
 DEPENDS:append:class-target = "${@ ' libabigail-native' if d.getVar('ABI_CHECK_SKIP') != '1' else ''}"
 
-IMG_DIR="${WORKDIR}/image"
+IMG_DIR = "${WORKDIR}/image"
 
 python binary_audit_gather_abixml() {
     import glob, os, time
@@ -55,7 +55,9 @@ do_install[postfuncs] += "${@ 'binary_audit_gather_abixml' if (d.getVar('CLASSOV
 do_install[vardepsexclude] += "${@ "binary_audit_gather_abixml" if ("class-target" == d.getVar("CLASSOVERRIDE")) else "" }"
 
 QARECIPETEST[abi-changed] = "package_qa_binary_audit_abixml_compare_to_ref"
-def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
+def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
+    if messages is None:
+        return
     import glob, os, time
     from binaryaudit import util
     from binaryaudit import abicheck
