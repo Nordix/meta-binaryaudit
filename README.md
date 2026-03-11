@@ -5,7 +5,7 @@ Yocto layer for ELF binary compliance validation.
 # Dependencies
 
 * URI: http://git.yoctoproject.org/clean/cgit.cgi/poky
-* Branch: dunfell|gatesgarth|hardknott|honister
+* Branch: dunfell|gatesgarth|hardknott|honister|scarthgap|whinlatter
 
 # ABI compliance
 
