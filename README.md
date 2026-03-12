@@ -5,7 +5,7 @@ Yocto layer for ELF binary compliance validation.
 # Dependencies
 
 * URI: http://git.yoctoproject.org/clean/cgit.cgi/poky
-* Branch: dunfell|gatesgarth|hardknott|honister
+* Branch: kirkstone|scarthgap|whinlatter
 
 # ABI compliance
 
@@ -15,18 +15,29 @@ The included libabigail recipe is configurable the usual way through [PACKAGECON
 
 ## ABI serialization
 
-The ABI check can be activated by appending the `abicheck` bbclass to the bbclass inherit list. The class will attach several function calls to the recipe `install` tasks, in order to handle creation and further usage of the ABI related data. In `local.conf`, the following is to be added:
+The ABI check can be activated by appending the `abicheck` bbclass to the bbclass inherit list. The class will attach several function calls to the recipe `install` tasks, in order to handle creation and further usage of the ABI related data. In your `local.conf`, add the following:
 
-`INHERIT += "abicheck"`
+```bitbake
+INHERIT += "abicheck"
+```
 
-The tool used for the ABI info serialization is [abidw](https://sourceware.org/libabigail/manual/abidw.html).
+With the class inherited, the serialized ABI representation will be integrated into the build history. Saving the build history will allow us to compare the current build
+with a baseline ABI data from a previous build.
 
-## ABI compatibility
+After your first build to collect baseline data, set the variable below to the buildhistory directory, which we now take as a baseline:
 
-The serialized ABI representation will be integrated into the build history. Saving the build history will allow to compare the current build
-with a baseline ABI data from a previous build. This requires the variable below to be set to a buildhistory directory to be taken as a baseline:
+```bitbake
+BINARY_AUDIT_REFERENCE_BASEDIR = "/path/to/buildhistory.baseline"
+```
 
-`BINARY_AUDIT_REFERENCE_BASEDIR = "/path/to/buildhistory.baseline"`
+The ABI comparison is done during [the Package QA mechanism](https://docs.yoctoproject.org/3.2/ref-manual/ref-qa-checks.html). ABI changes are reported as **warnings by default**, no configuration is required to enable this.
+
+To promote ABI changes to a build error instead, add the following to your `local.conf`:
+
+```bitbake
+ERROR_QA:append = " abi-changed"
+WARN_QA:remove = " abi-changed"
+```
 
 The tools used to perform the compatibility verification is [abicompat](https://sourceware.org/libabigail/manual/abicompat.html).
 

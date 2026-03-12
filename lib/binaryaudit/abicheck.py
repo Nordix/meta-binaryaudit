@@ -15,10 +15,12 @@ def is_elf(fn):
 
 
 def get_soname_from_xml(xml):
-    r = ElementTree.fromstring(xml)
+    if not xml or not xml.startswith('<'):
+        return ""
     try:
+        r = ElementTree.fromstring(xml)
         return r.attrib["soname"]
-    except (AttributeError, KeyError):
+    except (ElementTree.ParseError, AttributeError, KeyError):
         return ""
 
 
@@ -36,8 +38,10 @@ def _serialize(cmd):
     return process.returncode, out
 
 
-def serialize(fn):
+def serialize(fn, debug_info_dir=None):
     cmd = ["abidw", "--no-corpus-path", fn]
+    if debug_info_dir and os.path.isdir(debug_info_dir):
+        cmd += ["--debug-info-dir", debug_info_dir]
     status, out = _serialize(cmd)
     return status, out, cmd
 
@@ -86,11 +90,12 @@ def compare(ref, cur, suppr=[]):
     return process.returncode, out, cmd
 
 
-def serialize_artifacts(adir, id):
+def serialize_artifacts(adir, id, debug_info_dir=None):
     ''' Recursively serialize binary artifacts starting at the given image directory(id), yields serialized output and filename
     Parameters:
         adir (str): path to abixml directory
         id (str): image directory- result of calling d.getVar("IMG_DIR")
+        debug_info_dir (str): optional path to directory containing debug info (.debug files)
     '''
     for fn in glob.iglob(id + "/**/**", recursive=True):
         if os.path.isfile(fn) and not os.path.islink(fn):
@@ -103,7 +108,7 @@ def serialize_artifacts(adir, id):
                 continue
 
             # If there's no error, out is the XML representation
-            ret, out, cmd = serialize(fn)
+            ret, out, cmd = serialize(fn, debug_info_dir)
             util.note(" ".join(cmd))
             if not 0 == ret:
                 util.error(out)

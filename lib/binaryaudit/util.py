@@ -118,3 +118,13 @@ def create_path_to_xml(sn, adir, fn):
         out_fn = os.path.join(adir, ".".join([os.path.basename(fn), "xml"]))
 
     return out_fn
+
+
+# Add or append to a QA message.
+# This helper method was renamed after honister, so we implement our
+# own here so that it would work across versions.
+def add_message(messages, section, new_msg):
+    if section not in messages:
+        messages[section] = new_msg
+    else:
+        messages[section] = messages[section] + "\n" + new_msg
