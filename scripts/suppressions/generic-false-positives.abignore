@@ -1,0 +1,29 @@
+# Generic false-positive suppressions — safe to apply across all libraries.
+# Per-library rules (soname-scoped) live in their own files alongside this one.
+
+# 1. Any symbol versioned *_PRIVATE is an explicit internal contract.
+[suppress_function]
+  symbol_version_regexp = .*_PRIVATE$
+
+[suppress_variable]
+  symbol_version_regexp = .*_PRIVATE$
+
+# 2. C++ STL internals (std::, __gnu_cxx::, etc.) — never public ABI.
+[suppress_function]
+  name_regexp = ^_ZNSt
+
+[suppress_type]
+  name_regexp = ^_ZNSt
+
+# 3. _IO_FILE and its internal fields — always a glibc implementation detail.
+[suppress_type]
+  name_regexp = ^_IO_FILE
+
+# 4. pthread_cond_t layout — always opaque; callers use it by pointer only.
+[suppress_type]
+  name_regexp = ^pthread_cond_t$
+
+# 5. Functions/types explicitly tagged __private__ by their library.
+#    Safe for functions; types are suppressed only by name, not layout.
+[suppress_function]
+  name_regexp = __private__

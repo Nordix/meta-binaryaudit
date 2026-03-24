@@ -1,0 +1,6 @@
+# ossl_lib_ctx_st is OpenSSL's internal library context, accessed only via
+# the opaque OSSL_LIB_CTX* pointer. Callers never embed or dereference it.
+# Changes to its layout are not a public ABI break.
+[suppress_type]
+  soname_regexp = libcrypto\.so\..*
+  type_name = ossl_lib_ctx_st
