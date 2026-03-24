@@ -37,10 +37,17 @@ python binary_audit_gather_abixml() {
             f.write(out)
             f.close()
     else:
-        for out, out_fn in abicheck.serialize_artifacts(abixml_dir, artifact_dir):
+        headers_dir = os.path.join(d.getVar("D"), d.getVar("includedir").lstrip("/"))
+        for out, out_fn in abicheck.serialize_artifacts(abixml_dir, artifact_dir, headers_dir=headers_dir):
             with open(out_fn, "w") as f:
                 f.write(out)
                 f.close()
+        if os.path.isdir(headers_dir):
+            import shutil
+            stored_headers_dir = os.path.join(dest_basedir, "headers")
+            if os.path.exists(stored_headers_dir):
+                shutil.rmtree(stored_headers_dir)
+            shutil.copytree(headers_dir, stored_headers_dir)
 
     t1 = time.monotonic()
     duration_fl = abixml_dir + ".duration"
@@ -54,7 +61,7 @@ python binary_audit_gather_abixml() {
 do_install[postfuncs] += "${@ 'binary_audit_gather_abixml' if (d.getVar('CLASSOVERRIDE') == 'class-target' and d.getVar('ABI_CHECK_SKIP') != '1') else ''}"
 do_install[vardepsexclude] += "${@ "binary_audit_gather_abixml" if ("class-target" == d.getVar("CLASSOVERRIDE")) else "" }"
 
-def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
+def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     import glob, os, time
     import oe.qa
     from binaryaudit import abicheck
@@ -112,7 +119,10 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
 
             sn = abicheck.get_soname_from_xml(xml)
             if len(sn) > 0:
-                ret, out, cmd = abicheck.compare(ref_xml_fpath, cur_xml_fpath, suppr)
+                ref_headers_dir = os.path.join(fpath, "headers")
+                cur_headers_dir = os.path.join(dest_basedir, "headers")
+                ret, out, cmd = abicheck.compare(ref_xml_fpath, cur_xml_fpath, suppr,
+                    headers_dir1=ref_headers_dir, headers_dir2=cur_headers_dir)
 
                 bb.note("abidiff command: " + " ".join(cmd))
 
@@ -149,3 +159,39 @@ python __anonymous() {
 
 QARECIPETEST[abi-changed] = "package_qa_binary_audit_abixml_compare_to_ref"
 WARN_QA:append = " abi-changed"
+
+python do_archive_abixmls() {
+    import tarfile, os
+
+    d = e.data
+    buildhistory_dir = d.getVar('BUILDHISTORY_DIR')
+    packages_dir = os.path.join(buildhistory_dir, 'packages')
+    if not os.path.isdir(packages_dir):
+        bb.debug(1, "No buildhistory packages dir found at '{}'".format(packages_dir))
+        return
+
+    distro = d.getVar('DISTRO') or 'unknown'
+    distro_version = d.getVar('DISTRO_VERSION') or 'unknown'
+    tar_path = os.path.join(buildhistory_dir, '{}-{}-abixmls.tar'.format(distro, distro_version))
+    with tarfile.open(tar_path, 'w') as tar:
+        for root, dirs, files in os.walk(packages_dir):
+            if os.path.basename(root) == 'abixml':
+                for fn in files:
+                    if fn.endswith('.xml'):
+                        fpath = os.path.join(root, fn)
+                        arcname = os.path.relpath(fpath, buildhistory_dir)
+                        tar.add(fpath, arcname=arcname)
+                latest = os.path.join(root, '..', '..', 'latest')
+                if os.path.isfile(latest):
+                    arcname = os.path.relpath(os.path.realpath(latest), buildhistory_dir)
+                    tar.add(latest, arcname=arcname)
+            if 'binaryaudit/headers' in root:
+                for fn in files:
+                    fpath = os.path.join(root, fn)
+                    arcname = os.path.relpath(fpath, buildhistory_dir)
+                    tar.add(fpath, arcname=arcname)
+    bb.note("Archived abixmls to '{}'".format(tar_path))
+}
+
+addhandler do_archive_abixmls
+do_archive_abixmls[eventmask] = "bb.event.BuildCompleted"

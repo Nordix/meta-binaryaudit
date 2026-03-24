@@ -38,10 +38,12 @@ def _serialize(cmd):
     return process.returncode, out
 
 
-def serialize(fn, debug_info_dir=None):
+def serialize(fn, debug_info_dir=None, headers_dir=None):
     cmd = ["abidw", "--no-corpus-path", fn]
     if debug_info_dir and os.path.isdir(debug_info_dir):
         cmd += ["--debug-info-dir", debug_info_dir]
+    if headers_dir and os.path.isdir(headers_dir):
+        cmd += ["--headers-dir", headers_dir]
     status, out = _serialize(cmd)
     return status, out, cmd
 
@@ -70,10 +72,14 @@ def serialize_kernel_artifacts(abixml_dir, tree, vmlinux=None, whitelist=None):
     return out, out_fn
 
 
-def compare(ref, cur, suppr=[]):
+def compare(ref, cur, suppr=[], headers_dir1=None, headers_dir2=None):
     cmd = ["abidiff"]
     for sup_fn in suppr:
         cmd += ["--suppr", sup_fn]
+    if headers_dir1 and os.path.isdir(headers_dir1):
+        cmd += ["--hd1", headers_dir1]
+    if headers_dir2 and os.path.isdir(headers_dir2):
+        cmd += ["--hd2", headers_dir2]
     cmd += [ref, cur]
 
     sout = subprocess.PIPE
@@ -90,12 +96,13 @@ def compare(ref, cur, suppr=[]):
     return process.returncode, out, cmd
 
 
-def serialize_artifacts(adir, id, debug_info_dir=None):
+def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
     ''' Recursively serialize binary artifacts starting at the given image directory(id), yields serialized output and filename
     Parameters:
         adir (str): path to abixml directory
         id (str): image directory- result of calling d.getVar("IMG_DIR")
         debug_info_dir (str): optional path to directory containing debug info (.debug files)
+        headers_dir (str): optional path to installed headers, restricts abidw to public API only
     '''
     for fn in glob.iglob(id + "/**/**", recursive=True):
         if os.path.isfile(fn) and not os.path.islink(fn):
@@ -108,14 +115,14 @@ def serialize_artifacts(adir, id, debug_info_dir=None):
                 continue
 
             # If there's no error, out is the XML representation
-            ret, out, cmd = serialize(fn, debug_info_dir)
+            ret, out, cmd = serialize(fn, debug_info_dir, headers_dir)
             util.note(" ".join(cmd))
             if not 0 == ret:
-                util.error(out)
-                return
+                util.warn("abidw failed for '{}' (rc={}), skipping: {}".format(fn, ret, out))
+                continue
             if not out:
                 util.warn("Empty dump output for '{}'".format(fn))
-                return
+                continue
 
             sn = get_soname_from_xml(out)
 
