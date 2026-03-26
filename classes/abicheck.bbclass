@@ -47,7 +47,7 @@ python binary_audit_gather_abixml() {
             stored_headers_dir = os.path.join(dest_basedir, "headers")
             if os.path.exists(stored_headers_dir):
                 shutil.rmtree(stored_headers_dir)
-            shutil.copytree(headers_dir, stored_headers_dir)
+            shutil.copytree(headers_dir, stored_headers_dir, symlinks=True, ignore_dangling_symlinks=True)
 
     t1 = time.monotonic()
     duration_fl = abixml_dir + ".duration"
