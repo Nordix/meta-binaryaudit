@@ -89,7 +89,8 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
         bb.utils.mkdirhier(cur_abidiff_dir)
 
     ref_found = False
-    for fpath in glob.iglob("{}/packages/*/**/{}/binaryaudit".format(ref_basedir, pn), recursive=True):
+    pkg_arch = os.path.basename(os.path.dirname(os.path.dirname(dest_basedir)))
+    for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, pkg_arch, pn)):
         ref_found = True
         ref_abixml_dir = os.path.join(fpath, "abixml")
         if not os.path.isdir(ref_abixml_dir):
