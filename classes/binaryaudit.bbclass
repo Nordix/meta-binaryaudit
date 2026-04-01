@@ -5,7 +5,7 @@ BUILDHISTORY_PRESERVE += "binaryaudit"
 
 # An older buildhistory dir is used as a comparison baseline for the
 # current build. Set me in the local.conf.
-BINARY_AUDIT_REFERENCE_BASEDIR ?= ""
+BINARY_AUDIT_REFERENCE_BASEDIR ?= "${BUILDHISTORY_DIR}"
 
 BINARY_AUDIT_IMPORTS = "abicheck"
 

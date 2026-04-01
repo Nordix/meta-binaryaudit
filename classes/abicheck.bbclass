@@ -10,6 +10,7 @@ IMG_DIR = "${WORKDIR}/image"
 
 python binary_audit_gather_abixml() {
     import glob, os, time
+    import shutil
     from binaryaudit import abicheck
 
     t0 = time.monotonic()
@@ -17,6 +18,21 @@ python binary_audit_gather_abixml() {
     dest_basedir = binary_audit_get_create_pkg_dest_basedir(d)
 
     abixml_dir = os.path.join(dest_basedir, "abixml")
+
+    # Snapshot existing abixml as reference before overwriting with new build.
+    # This allows comparing old vs new without separate reference configuration.
+    ref_abixml_dir = os.path.join(dest_basedir, "abixml-reference")
+    if os.path.isdir(abixml_dir) and os.listdir(abixml_dir):
+        if os.path.exists(ref_abixml_dir):
+            shutil.rmtree(ref_abixml_dir)
+        shutil.copytree(abixml_dir, ref_abixml_dir)
+    ref_headers_dir = os.path.join(dest_basedir, "headers")
+    ref_headers_snap = os.path.join(dest_basedir, "headers-reference")
+    if os.path.isdir(ref_headers_dir) and os.listdir(ref_headers_dir):
+        if os.path.exists(ref_headers_snap):
+            shutil.rmtree(ref_headers_snap)
+        shutil.copytree(ref_headers_dir, ref_headers_snap)
+
     if not os.path.exists(abixml_dir):
         bb.utils.mkdirhier(abixml_dir)
 
@@ -100,6 +116,9 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, pkg_arch, pn)):
         ref_found = True
         ref_abixml_dir = os.path.join(fpath, "abixml")
+        # Use the pre-upgrade snapshot if reference is the same buildhistory
+        if os.path.isdir(os.path.join(fpath, "abixml-reference")):
+            ref_abixml_dir = os.path.join(fpath, "abixml-reference")
         if not os.path.isdir(ref_abixml_dir):
             bb.debug(1, "No ABI reference found for '{}' under '{}'".format(pn, ref_abixml_dir))
             continue
@@ -121,6 +140,9 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
             sn = abicheck.get_soname_from_xml(xml)
             if len(sn) > 0:
                 ref_headers_dir = os.path.join(fpath, "headers")
+                # Use the pre-upgrade snapshot if available
+                if os.path.isdir(os.path.join(fpath, "headers-reference")):
+                    ref_headers_dir = os.path.join(fpath, "headers-reference")
                 cur_headers_dir = os.path.join(dest_basedir, "headers")
                 ret, out, cmd = abicheck.compare(ref_xml_fpath, cur_xml_fpath, suppr,
                     headers_dir1=ref_headers_dir, headers_dir2=cur_headers_dir)
