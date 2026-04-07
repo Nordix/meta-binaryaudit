@@ -14,6 +14,11 @@ def is_elf(fn):
     return head == exp
 
 
+def is_shared_library(fn):
+    """Check if ELF file is a shared library (.so in filename)."""
+    return is_elf(fn) and '.so' in os.path.basename(fn)
+
+
 def get_soname_from_xml(xml):
     if not xml or not xml.startswith('<'):
         return ""
@@ -106,12 +111,11 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
     '''
     for fn in glob.iglob(id + "/**/**", recursive=True):
         if os.path.isfile(fn) and not os.path.islink(fn):
-            is_elf_artifact = False
             try:
-                is_elf_artifact = is_elf(fn)
+                if not is_shared_library(fn):
+                    continue
             except Exception as e:
                 util.warn(str(e))
-            if not is_elf_artifact:
                 continue
 
             # If there's no error, out is the XML representation
