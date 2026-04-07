@@ -109,17 +109,27 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
         debug_info_dir (str): optional path to directory containing debug info (.debug files)
         headers_dir (str): optional path to installed headers, restricts abidw to public API only
     '''
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    elfs = []
     for fn in glob.iglob(id + "/**/**", recursive=True):
         if os.path.isfile(fn) and not os.path.islink(fn):
             try:
-                if not is_shared_library(fn):
-                    continue
+                if is_shared_library(fn):
+                    elfs.append(fn)
             except Exception as e:
                 util.warn(str(e))
-                continue
 
-            # If there's no error, out is the XML representation
-            ret, out, cmd = serialize(fn, debug_info_dir, headers_dir)
+    with ProcessPoolExecutor() as pool:
+        futures = {pool.submit(serialize, fn, debug_info_dir, headers_dir): fn
+                   for fn in elfs}
+        for future in as_completed(futures):
+            fn = futures[future]
+            try:
+                ret, out, cmd = future.result()
+            except Exception as e:
+                util.warn("abidw exception for '{}': {}".format(fn, e))
+                continue
             util.note(" ".join(cmd))
             if not 0 == ret:
                 util.warn("abidw failed for '{}' (rc={}), skipping: {}".format(fn, ret, out))
@@ -129,9 +139,7 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
                 continue
 
             sn = get_soname_from_xml(out)
-
             out_fn = util.create_path_to_xml(sn, adir, fn)
-
             yield out, out_fn
 
 
