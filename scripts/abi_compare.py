@@ -113,11 +113,23 @@ def _maybe_extract(path):
     def _extract_tar(tar_path):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp).resolve()
-            with tarfile.open(tar_path) as tar:
-                for member in tar.getmembers():
-                    if not (tmp_path / member.name).resolve().is_relative_to(tmp_path):
-                        raise ValueError(f"Unsafe tar entry: {member.name}")
-                tar.extractall(tmp)
+            if _is_zstd(tar_path):
+                try:
+                    import zstandard
+                except ImportError:
+                    sys.exit("error: 'zstandard' Python package is required for .tar.zst files")
+                with zstandard.open(tar_path, 'rb') as zst_f:
+                    with tarfile.open(fileobj=zst_f, mode='r|') as tar:
+                        for member in tar:
+                            if not (tmp_path / member.name).resolve().is_relative_to(tmp_path):
+                                raise ValueError(f"Unsafe tar entry: {member.name}")
+                            tar.extract(member, tmp)
+            else:
+                with tarfile.open(tar_path) as tar:
+                    for member in tar.getmembers():
+                        if not (tmp_path / member.name).resolve().is_relative_to(tmp_path):
+                            raise ValueError(f"Unsafe tar entry: {member.name}")
+                    tar.extractall(tmp)
             yield tmp
 
     @contextlib.contextmanager
@@ -126,9 +138,17 @@ def _maybe_extract(path):
 
     if os.path.isdir(path):
         return _passthrough(path)
-    if tarfile.is_tarfile(path):
+    if _is_zstd(path) or tarfile.is_tarfile(path):
         return _extract_tar(path)
     return _passthrough(path)
+
+
+def _is_zstd(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read(4) == b'\x28\xb5\x2f\xfd'
+    except OSError:
+        return False
 
 
 def _run_compare(args, ref_name, ref_path, cur_name, cur_path):

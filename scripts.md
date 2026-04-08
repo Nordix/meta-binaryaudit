@@ -7,6 +7,50 @@ by the `binaryaudit` bbclass across two Yocto builds.
 abi_compare.py  →  <run>.log  →  generate_abi_report.py  →  <run>.html + <run>.json
 ```
 
+In a multi-arch CI pipeline, use `merge_abixmls.py` to combine the per-arch
+archives before comparison:
+
+```
+[arch-1 build] → distro-ver-arch1-abixmls.tar.zst ─┐
+[arch-2 build] → distro-ver-arch2-abixmls.tar.zst ─┤→ merge_abixmls.py → merged.tar.zst
+[arch-N build] → distro-ver-archN-abixmls.tar.zst ─┘         │
+                                                     abi_compare.py  →  <run>.log  →  ...
+```
+
+---
+
+## merge_abixmls.py
+
+Merges multiple per-arch `abixmls.tar.zst` archives (one produced per CI arch
+build) into a single archive that `abi_compare.py` can consume transparently.
+
+**Input:** two or more `.tar.zst` archives from `do_archive_abixmls`.
+**Output:** a single merged `.tar.zst` preserving the full
+`packages/<pkg_arch>/<pkg>/binaryaudit/abixml/<pkg_arch>/` structure.
+
+### Usage
+
+```bash
+python3 merge_abixmls.py \
+  --input  distro-1.0-cortexa53-abixmls.tar.zst \
+           distro-1.0-x86_64-abixmls.tar.zst \
+  --output distro-1.0-all-abixmls.tar.zst
+```
+
+| Argument | Required | Description |
+|---|---|---|
+| `--input ARCHIVE [...]` | yes | One or more input `.tar.zst` archives |
+| `--output ARCHIVE` | yes | Path for the merged output archive |
+| `--on-conflict warn\|error` | no | Action when the same path appears in multiple inputs (default: `warn`, keeps first) |
+
+### CI step order
+
+1. Build each arch in parallel, each producing `<distro>-<ver>-abixmls.tar.zst`
+2. Collect all per-arch archives as CI artifacts
+3. Run `merge_abixmls.py --input *.tar.zst --output merged.tar.zst`
+4. Store `merged.tar.zst` as the baseline artifact for the next comparison
+5. Run `abi_compare.py --ref-build <name> baseline.tar.zst --current-build <name> merged.tar.zst`
+
 ---
 
 ## abi_compare.py
