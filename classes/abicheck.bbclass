@@ -187,6 +187,7 @@ WARN_QA:append = " abi-changed"
 
 python do_archive_abixmls() {
     import tarfile, os
+    import bb.compress.zstd
 
     d = e.data
     buildhistory_dir = d.getVar('BUILDHISTORY_DIR')
@@ -197,24 +198,26 @@ python do_archive_abixmls() {
 
     distro = d.getVar('DISTRO') or 'unknown'
     distro_version = d.getVar('DISTRO_VERSION') or 'unknown'
-    tar_path = os.path.join(buildhistory_dir, '{}-{}-abixmls.tar'.format(distro, distro_version))
-    with tarfile.open(tar_path, 'w') as tar:
-        for root, dirs, files in os.walk(packages_dir):
-            if os.path.basename(root) == 'abixml':
-                for fn in files:
-                    if fn.endswith('.xml'):
+    num_threads = int(d.getVar('BB_NUMBER_THREADS') or 1)
+    tar_path = os.path.join(buildhistory_dir, '{}-{}-abixmls.tar.zst'.format(distro, distro_version))
+    with bb.compress.zstd.open(tar_path, mode='wb', num_threads=num_threads) as zst_f:
+        with tarfile.open(fileobj=zst_f, mode='w|') as tar:
+            for root, dirs, files in os.walk(packages_dir):
+                if os.path.basename(root) == 'abixml':
+                    for fn in files:
+                        if fn.endswith('.xml'):
+                            fpath = os.path.join(root, fn)
+                            arcname = os.path.relpath(fpath, buildhistory_dir)
+                            tar.add(fpath, arcname=arcname)
+                    latest = os.path.join(root, '..', '..', 'latest')
+                    if os.path.isfile(latest):
+                        arcname = os.path.relpath(os.path.realpath(latest), buildhistory_dir)
+                        tar.add(latest, arcname=arcname)
+                if 'binaryaudit/headers' in root:
+                    for fn in files:
                         fpath = os.path.join(root, fn)
                         arcname = os.path.relpath(fpath, buildhistory_dir)
                         tar.add(fpath, arcname=arcname)
-                latest = os.path.join(root, '..', '..', 'latest')
-                if os.path.isfile(latest):
-                    arcname = os.path.relpath(os.path.realpath(latest), buildhistory_dir)
-                    tar.add(latest, arcname=arcname)
-            if 'binaryaudit/headers' in root:
-                for fn in files:
-                    fpath = os.path.join(root, fn)
-                    arcname = os.path.relpath(fpath, buildhistory_dir)
-                    tar.add(fpath, arcname=arcname)
     bb.note("Archived abixmls to '{}'".format(tar_path))
 }
 
