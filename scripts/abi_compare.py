@@ -37,16 +37,19 @@ def get_package_version(build_dir, package):
 def find_abixml_files(build_dir, package=None):
     """Find all ABI XML files with sonames in build directory."""
     build_path = Path(build_dir)
-    pattern = "*/binaryaudit/abixml/*.so.xml"
+    # Layout: */binaryaudit/abixml/<arch>/*.so.xml
+    pattern = "*/binaryaudit/abixml/*/*.so.xml"
     files = {}
     for xml_file in build_path.rglob(pattern):
         soname = get_soname(xml_file)
         if soname:
-            pkg_name = xml_file.parts[-4]
+            # parts: [..., <pkg>, 'binaryaudit', 'abixml', <arch>, <file>]
+            pkg_name = xml_file.parts[-5]
+            arch = xml_file.parts[-2]
             if package and pkg_name != package:
                 continue
-            key = f"{pkg_name}/{soname}"
-            headers_dir = xml_file.parent.parent / "headers"
+            key = f"{pkg_name}/{arch}/{soname}"
+            headers_dir = xml_file.parent.parent.parent / "headers"
             files[key] = (xml_file, headers_dir if headers_dir.is_dir() else None)
 
     return files
@@ -140,18 +143,18 @@ def _run_compare(args, ref_name, ref_path, cur_name, cur_path):
             print(f"  {key}")
         return 0
     
-    def base_key(pkg, soname):
-        return f"{pkg}/{soname.split('.so')[0]}.so"
+    def base_key(pkg, arch, soname):
+        return f"{pkg}/{arch}/{soname.split('.so')[0]}.so"
 
     old_by_base = {}
     for key, (path, hdr) in old_files.items():
-        pkg, soname = key.split('/', 1)
-        old_by_base[base_key(pkg, soname)] = (key, path, hdr)
+        pkg, arch, soname = key.split('/', 2)
+        old_by_base[base_key(pkg, arch, soname)] = (key, path, hdr)
 
     new_by_base = {}
     for key, (path, hdr) in new_files.items():
-        pkg, soname = key.split('/', 1)
-        new_by_base[base_key(pkg, soname)] = (key, path, hdr)
+        pkg, arch, soname = key.split('/', 2)
+        new_by_base[base_key(pkg, arch, soname)] = (key, path, hdr)
 
     common_base = set(old_by_base.keys()) & set(new_by_base.keys())
     if args.library:
