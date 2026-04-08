@@ -37,8 +37,37 @@ To promote ABI changes to a build error instead, add the following to your `loca
 ```bitbake
 ERROR_QA:append = " abi-changed"
 WARN_QA:remove = " abi-changed"
+```
 
 The tools used to perform the compatibility verification is [abicompat](https://sourceware.org/libabigail/manual/abicompat.html).
+
+## CI / command-line usage
+
+To enable abicheck for a single build without modifying `local.conf`, use the
+`-R` flag to inject the provided conf fragment:
+
+```bash
+bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf <target>
+```
+
+To also set a reference baseline for comparison in the same invocation:
+
+```bash
+BINARY_AUDIT_REFERENCE_BASEDIR=/path/to/buildhistory.baseline \
+bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf <target>
+```
+
+To promote ABI changes to build errors (e.g. in a gating CI job), stack a
+second fragment:
+
+```bash
+bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf \
+        -R /path/to/meta-binaryaudit/conf/abicheck-errors.conf <target>
+```
+
+The two conf fragments are:
+- `conf/abicheck-enable.conf` — adds `abicheck` to `INHERIT`
+- `conf/abicheck-errors.conf` — moves `abi-changed` from `WARN_QA` to `ERROR_QA`
 
 ## ABI error suppressions
 
