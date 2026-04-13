@@ -10,13 +10,34 @@ IMG_DIR = "${WORKDIR}/image"
 
 python binary_audit_gather_abixml() {
     import glob, os, time
+    import shutil
     from binaryaudit import abicheck
 
     t0 = time.monotonic()
 
     dest_basedir = binary_audit_get_create_pkg_dest_basedir(d)
 
-    abixml_dir = os.path.join(dest_basedir, "abixml")
+    pkg_arch = d.getVar("PACKAGE_ARCH")
+    abixml_dir = os.path.join(dest_basedir, "abixml", pkg_arch)
+
+    # Snapshot existing abixml as reference before overwriting with new build.
+    # This allows comparing old vs new without separate reference configuration.
+    ref_abixml_dir = os.path.join(dest_basedir, "abixml-reference", pkg_arch)
+    abixml_arch_parent = os.path.join(dest_basedir, "abixml")
+    ref_abixml_arch_parent = os.path.join(dest_basedir, "abixml-reference")
+    if os.path.isdir(abixml_dir) and os.listdir(abixml_dir):
+        if os.path.exists(ref_abixml_dir):
+            shutil.rmtree(ref_abixml_dir)
+        if not os.path.exists(ref_abixml_arch_parent):
+            bb.utils.mkdirhier(ref_abixml_arch_parent)
+        shutil.copytree(abixml_dir, ref_abixml_dir)
+    ref_headers_dir = os.path.join(dest_basedir, "headers")
+    ref_headers_snap = os.path.join(dest_basedir, "headers-reference")
+    if os.path.isdir(ref_headers_dir) and os.listdir(ref_headers_dir):
+        if os.path.exists(ref_headers_snap):
+            shutil.rmtree(ref_headers_snap)
+        shutil.copytree(ref_headers_dir, ref_headers_snap)
+
     if not os.path.exists(abixml_dir):
         bb.utils.mkdirhier(abixml_dir)
 
@@ -37,10 +58,17 @@ python binary_audit_gather_abixml() {
             f.write(out)
             f.close()
     else:
-        for out, out_fn in abicheck.serialize_artifacts(abixml_dir, artifact_dir):
+        headers_dir = os.path.join(d.getVar("D"), d.getVar("includedir").lstrip("/"))
+        for out, out_fn in abicheck.serialize_artifacts(abixml_dir, artifact_dir, headers_dir=headers_dir):
             with open(out_fn, "w") as f:
                 f.write(out)
                 f.close()
+        if os.path.isdir(headers_dir):
+            import shutil
+            stored_headers_dir = os.path.join(dest_basedir, "headers")
+            if os.path.exists(stored_headers_dir):
+                shutil.rmtree(stored_headers_dir)
+            shutil.copytree(headers_dir, stored_headers_dir, symlinks=True, ignore_dangling_symlinks=True)
 
     t1 = time.monotonic()
     duration_fl = abixml_dir + ".duration"
@@ -54,7 +82,7 @@ python binary_audit_gather_abixml() {
 do_install[postfuncs] += "${@ 'binary_audit_gather_abixml' if (d.getVar('CLASSOVERRIDE') == 'class-target' and d.getVar('ABI_CHECK_SKIP') != '1') else ''}"
 do_install[vardepsexclude] += "${@ "binary_audit_gather_abixml" if ("class-target" == d.getVar("CLASSOVERRIDE")) else "" }"
 
-def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
+def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     import glob, os, time
     import oe.qa
     from binaryaudit import abicheck
@@ -70,7 +98,8 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
     bb.debug(1, "SUPPRESSION FILES: {}".format(str(suppr)))
 
     dest_basedir = binary_audit_get_create_pkg_dest_basedir(d)
-    cur_abixml_dir = os.path.join(dest_basedir, "abixml")
+    pkg_arch = d.getVar("PACKAGE_ARCH")
+    cur_abixml_dir = os.path.join(dest_basedir, "abixml", pkg_arch)
     if not os.path.isdir(cur_abixml_dir):
         bb.debug(1, "No ABI dump found in the current build for '{}' under '{}'".format(pn, cur_abixml_dir))
         return
@@ -89,10 +118,12 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
         bb.utils.mkdirhier(cur_abidiff_dir)
 
     ref_found = False
-    pkg_arch = os.path.basename(os.path.dirname(os.path.dirname(dest_basedir)))
     for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, pkg_arch, pn)):
         ref_found = True
-        ref_abixml_dir = os.path.join(fpath, "abixml")
+        ref_abixml_dir = os.path.join(fpath, "abixml", pkg_arch)
+        # Use the pre-upgrade snapshot if reference is the same buildhistory
+        if os.path.isdir(os.path.join(fpath, "abixml-reference", pkg_arch)):
+            ref_abixml_dir = os.path.join(fpath, "abixml-reference", pkg_arch)
         if not os.path.isdir(ref_abixml_dir):
             bb.debug(1, "No ABI reference found for '{}' under '{}'".format(pn, ref_abixml_dir))
             continue
@@ -113,7 +144,13 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
 
             sn = abicheck.get_soname_from_xml(xml)
             if len(sn) > 0:
-                ret, out, cmd = abicheck.compare(ref_xml_fpath, cur_xml_fpath, suppr)
+                ref_headers_dir = os.path.join(fpath, "headers")
+                # Use the pre-upgrade snapshot if available
+                if os.path.isdir(os.path.join(fpath, "headers-reference")):
+                    ref_headers_dir = os.path.join(fpath, "headers-reference")
+                cur_headers_dir = os.path.join(dest_basedir, "headers")
+                ret, out, cmd = abicheck.compare(ref_xml_fpath, cur_xml_fpath, suppr,
+                    headers_dir1=ref_headers_dir, headers_dir2=cur_headers_dir)
 
                 bb.note("abidiff command: " + " ".join(cmd))
 
@@ -131,9 +168,11 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages):
                     f.write(out)
                 bb.note("Generated abidiff for {} in {}".format(xml_fn, cur_abidiff_dir))
 
-                if not abicheck.diff_is_ok(ret):
+                if abicheck.diff_is_incompatible_change(ret):
                     oe.qa.handle_error("abi-changed",
-                        "%s: ABI changed from reference build, logs: %s" % (pn, out), d)
+                        "%s: ABI incompatibly changed from reference build, logs: %s" % (pn, out), d)
+                elif abicheck.diff_is_change(ret):
+                    bb.warn("%s: ABI changed (compatible additions), logs: %s" % (pn, out))
 
     if not ref_found:
         bb.note("No reference ABI found for '{}' in '{}' - package may be new in this build".format(pn, ref_basedir))
@@ -150,3 +189,47 @@ python __anonymous() {
 
 QARECIPETEST[abi-changed] = "package_qa_binary_audit_abixml_compare_to_ref"
 WARN_QA:append = " abi-changed"
+
+python do_archive_abixmls() {
+    import tarfile, os
+    import bb.compress.zstd
+
+    d = e.data
+    buildhistory_dir = d.getVar('BUILDHISTORY_DIR')
+    packages_dir = os.path.join(buildhistory_dir, 'packages')
+    if not os.path.isdir(packages_dir):
+        bb.debug(1, "No buildhistory packages dir found at '{}'".format(packages_dir))
+        return
+
+    distro = d.getVar('DISTRO') or 'unknown'
+    distro_version = d.getVar('DISTRO_VERSION') or 'unknown'
+    num_threads = int(d.getVar('BB_NUMBER_THREADS') or 1)
+    tar_path = os.path.join(buildhistory_dir, '{}-{}-abixmls.tar.zst'.format(distro, distro_version))
+    with bb.compress.zstd.open(tar_path, mode='wb', num_threads=num_threads) as zst_f:
+        with tarfile.open(fileobj=zst_f, mode='w|') as tar:
+            for root, dirs, files in os.walk(packages_dir):
+                if os.path.basename(root) == 'abixml':
+                    # abixml/<arch>/ subdirs — walk one level deeper
+                    for arch_dir in os.listdir(root):
+                        arch_path = os.path.join(root, arch_dir)
+                        if not os.path.isdir(arch_path):
+                            continue
+                        for fn in os.listdir(arch_path):
+                            if fn.endswith('.xml'):
+                                fpath = os.path.join(arch_path, fn)
+                                arcname = os.path.relpath(fpath, buildhistory_dir)
+                                tar.add(fpath, arcname=arcname)
+                latest = os.path.join(root, '..', '..', 'latest')
+                if os.path.isfile(latest):
+                    arcname = os.path.relpath(os.path.realpath(latest), buildhistory_dir)
+                    tar.add(latest, arcname=arcname)
+                if 'binaryaudit/headers' in root:
+                    for fn in files:
+                        fpath = os.path.join(root, fn)
+                        arcname = os.path.relpath(fpath, buildhistory_dir)
+                        tar.add(fpath, arcname=arcname)
+    bb.note("Archived abixmls to '{}'".format(tar_path))
+}
+
+addhandler do_archive_abixmls
+do_archive_abixmls[eventmask] = "bb.event.BuildCompleted"

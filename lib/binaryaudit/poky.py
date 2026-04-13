@@ -5,9 +5,23 @@ import tempfile
 import shutil
 import tarfile
 import glob
+
+try:
+    import zstandard
+except ImportError:
+    zstandard = None
 from binaryaudit import util
 from binaryaudit import abicheck
 from binaryaudit.db import VERSION_NOT_AVAILABLE
+
+
+def _is_zstd(path):
+    """Return True if the file starts with the Zstd magic bytes."""
+    try:
+        with open(path, 'rb') as f:
+            return f.read(4) == b'\x28\xb5\x2f\xfd'
+    except OSError:
+        return False
 
 
 def retrieve_baseline(db_conn, prod_id):
@@ -36,28 +50,17 @@ def retrieve_baseline(db_conn, prod_id):
         shutil.rmtree(extractdir)
     os.makedirs(extractdir)
 
-    with tarfile.open(data_fl.name, "r:gz") as tgz:
-        def is_within_directory(directory, target):
-            
-            abs_directory = os.path.abspath(directory)
-            abs_target = os.path.abspath(target)
-        
-            prefix = os.path.commonprefix([abs_directory, abs_target])
-            
-            return prefix == abs_directory
-        
-        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
-        
-            for member in tar.getmembers():
-                member_path = os.path.join(path, member.name)
-                if not is_within_directory(path, member_path):
-                    raise Exception("Attempted Path Traversal in Tar File")
-        
-            tar.extractall(path, members, numeric_owner=numeric_owner) 
-            
-        
-        safe_extract(tgz, extractdir)
-        tgz.close()
+    # Support both legacy .tar.gz and current .tar.zst baselines
+    if data_fl.name.endswith('.zst') or _is_zstd(data_fl.name):
+        if zstandard is None:
+            util.error("zstandard package is required to extract .tar.zst baselines")
+            return None, None
+        with zstandard.open(data_fl.name, 'rb') as zst_f:
+            with tarfile.open(fileobj=zst_f, mode='r|') as tar:
+                tar.extractall(extractdir)
+    else:
+        with tarfile.open(data_fl.name, "r:gz") as tgz:
+            tgz.extractall(extractdir)
     os.unlink(data_fl.name)
     # Depends on how we pack, but the first sibling named "buildhistory" should be it.
     buildhistory_baseline_dir = None

@@ -4,7 +4,7 @@ LICENSE = "LGPL-3.0-or-later"
 SECTION = "devel"
 
 SRC_URI = "https://mirrors.kernel.org/sourceware/libabigail/libabigail-${PV}.tar.xz"
-SRC_URI[sha256sum] = "0f52b1ab7997ee2f7895afb427f24126281f66a4756ba2c62bce1a17b546e153"
+SRC_URI[sha256sum] = "b4b86baa3105a28ada25091f1ef0535e7a60616d3d5d4cb1ee2aceaba341d738"
 
 LIC_FILES_CHKSUM = "file://LICENSE.txt;md5=0bcd48c3bdfef0c9d9fd17726e4b7dab"
 
