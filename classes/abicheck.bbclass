@@ -87,6 +87,10 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     import oe.qa
     from binaryaudit import abicheck
 
+    # Ensure native sysroot binaries (abidiff, abidw) are in PATH
+    native_bindir = os.path.join(d.getVar("RECIPE_SYSROOT_NATIVE"), "usr", "bin")
+    os.environ["PATH"] = native_bindir + ":" + os.environ.get("PATH", "")
+
     t0 = time.monotonic()
     recipe_suppr = d.getVar("WORKDIR") + "/abi*.suppr"
     suppr = glob.glob(recipe_suppr)
