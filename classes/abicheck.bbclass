@@ -122,7 +122,8 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
         bb.utils.mkdirhier(cur_abidiff_dir)
 
     ref_found = False
-    for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, pkg_arch, pn)):
+    multimach_target_sys = d.getVar("MULTIMACH_TARGET_SYS")
+    for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, multimach_target_sys, pn)):
         ref_found = True
         ref_abixml_dir = os.path.join(fpath, "abixml", pkg_arch)
         # Use the pre-upgrade snapshot if reference is the same buildhistory
