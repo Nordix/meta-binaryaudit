@@ -78,7 +78,11 @@ def serialize_kernel_artifacts(abixml_dir, tree, vmlinux=None, whitelist=None):
 
 
 def compare(ref, cur, suppr=[], headers_dir1=None, headers_dir2=None):
-    cmd = ["abidiff"]
+    using_headers = (headers_dir1 and os.path.isdir(headers_dir1)) or \
+                    (headers_dir2 and os.path.isdir(headers_dir2))
+    cmd = ["abidiff", "--no-unreferenced-symbols"]
+    if not using_headers:
+        cmd += ["--drop-private-types"]
     for sup_fn in suppr:
         cmd += ["--suppr", sup_fn]
     if headers_dir1 and os.path.isdir(headers_dir1):
