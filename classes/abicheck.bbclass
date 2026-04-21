@@ -175,9 +175,11 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
 
                 if abicheck.diff_is_incompatible_change(ret):
                     oe.qa.handle_error("abi-changed",
-                        "%s: ABI incompatibly changed from reference build, logs: %s" % (pn, out), d)
+                        "%s: ABI incompatibly changed from reference build for %s, logs: %s" % (pn, sn, out), d)
                 elif abicheck.diff_is_change(ret):
-                    bb.warn("%s: ABI changed (compatible additions), logs: %s" % (pn, out))
+                    bb.warn("%s: ABI changed (compatible additions) for %s, logs: %s" % (pn, sn, out))
+                else:
+                    bb.note("%s: ABI OK - no incompatible changes for %s" % (pn, sn))
 
     if not ref_found:
         bb.note("No reference ABI found for '{}' in '{}' - package may be new in this build".format(pn, ref_basedir))
