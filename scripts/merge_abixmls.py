@@ -44,7 +44,13 @@ def _open_zst_tar(path, mode):
 def _is_zstd(path):
     try:
         with open(path, 'rb') as f:
-            return f.read(4) == b'\x28\xb5\x2f\xfd'
+            magic = f.read(4)
+        # Standard zstd frame magic
+        if magic == b'\x28\xb5\x2f\xfd':
+            return True
+        # Zstd skippable frame magic range: 0x184D2A50 - 0x184D2A5F (little-endian)
+        val = int.from_bytes(magic, 'little')
+        return 0x184D2A50 <= val <= 0x184D2A5F
     except OSError:
         return False
 
@@ -55,12 +61,16 @@ def _extract_to(src_path, dest_dir):
     extracted = []
 
     def _safe_extract(tar):
-        for member in tar.getmembers():
+        extracted_names = set()
+        for member in tar:
             target = (dest / member.name).resolve()
             if not str(target).startswith(str(dest)):
                 raise ValueError(f"Unsafe tar entry rejected: {member.name}")
+            if member.name in extracted_names:
+                continue  # skip intra-archive duplicates silently
             tar.extract(member, dest_dir)
             extracted.append(member.name)
+            extracted_names.add(member.name)
 
     if _is_zstd(src_path):
         stream, tar_mode = _open_zst_tar(src_path, 'r')
