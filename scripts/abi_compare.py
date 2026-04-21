@@ -37,14 +37,16 @@ def get_package_version(build_dir, package):
 def find_abixml_files(build_dir, package=None):
     """Find all ABI XML files with sonames in build directory."""
     build_path = Path(build_dir)
-    # Layout: */binaryaudit/abixml/<arch>/*.so.xml
-    pattern = "*/binaryaudit/abixml/*/*.so.xml"
+    # Layout: [packages/<arch-os>/]<pkg>/binaryaudit/abixml/<arch>/*.so.xml
+    pattern = "binaryaudit/abixml/*/*.so.xml"
     files = {}
     for xml_file in build_path.rglob(pattern):
         soname = get_soname(xml_file)
         if soname:
-            # parts: [..., <pkg>, 'binaryaudit', 'abixml', <arch>, <file>]
-            pkg_name = xml_file.parts[-5]
+            # find 'binaryaudit' in parts and go one level up for pkg_name
+            parts = xml_file.parts
+            binaryaudit_idx = parts.index('binaryaudit')
+            pkg_name = parts[binaryaudit_idx - 1]
             arch = xml_file.parts[-2]
             if package and pkg_name != package:
                 continue
@@ -146,7 +148,13 @@ def _maybe_extract(path):
 def _is_zstd(path):
     try:
         with open(path, 'rb') as f:
-            return f.read(4) == b'\x28\xb5\x2f\xfd'
+            magic = f.read(4)
+        # Standard zstd frame magic
+        if magic == b'\x28\xb5\x2f\xfd':
+            return True
+        # Zstd skippable frame magic range: 0x184D2A50 - 0x184D2A5F (little-endian)
+        val = int.from_bytes(magic, 'little')
+        return 0x184D2A50 <= val <= 0x184D2A5F
     except OSError:
         return False
 
