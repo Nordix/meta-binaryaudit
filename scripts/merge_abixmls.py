@@ -5,10 +5,20 @@
 # Merge multiple per-arch abixmls.tar.zst archives (one per CI arch build)
 # into a single archive that abi_compare.py can consume transparently.
 #
-# Usage:
+# Usage — explicit files:
 #   python3 merge_abixmls.py \
 #       --input  distro-1.0-cortexa53-abixmls.tar.zst \
 #                distro-1.0-x86_64-abixmls.tar.zst \
+#       --output distro-1.0-all-abixmls.tar.zst
+#
+# Usage — directory (all *abixmls*.tar.zst found recursively):
+#   python3 merge_abixmls.py \
+#       --input  /path/to/build/repos/ \
+#       --output distro-1.0-all-abixmls.tar.zst
+#
+# Usage — mix of files and directories:
+#   python3 merge_abixmls.py \
+#       --input  /builds/repo1 /builds/repo2/specific.tar.zst \
 #       --output distro-1.0-all-abixmls.tar.zst
 #
 # The merged archive preserves the full
@@ -124,22 +134,67 @@ def merge(inputs, output, on_conflict='warn'):
     print(f"done: merged {len(inputs)} archive(s), {len(seen)} entries → {output}")
 
 
+def _find_archives(paths):
+    """
+    Expand a mixed list of files and directories into a flat list of archive paths.
+    Directories are searched recursively for *abixmls*.tar.zst files.
+    The output archive (if inside a searched directory) is excluded via the caller.
+    """
+    archives = []
+    for p in paths:
+        p = os.path.abspath(p)
+        if os.path.isdir(p):
+            found = sorted(Path(p).rglob('*abixmls*.tar.zst'))
+            if not found:
+                print(f"warning: no *abixmls*.tar.zst files found under {p}", file=sys.stderr)
+            for f in found:
+                archives.append(str(f))
+        elif os.path.isfile(p):
+            archives.append(p)
+        else:
+            sys.exit(f"error: not a file or directory: {p}")
+    return archives
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Merge per-arch abixmls.tar.zst archives into one.")
-    parser.add_argument('--input', nargs='+', required=True, metavar='ARCHIVE',
-                        help='Input .tar.zst archives (one per arch build)')
+        description="Merge per-arch abixmls.tar.zst archives into one.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  # explicit files\n"
+            "  %(prog)s --input a.tar.zst b.tar.zst --output merged.tar.zst\n"
+            "\n"
+            "  # directory: all *abixmls*.tar.zst found recursively\n"
+            "  %(prog)s --input /path/to/build/dir --output merged.tar.zst\n"
+            "\n"
+            "  # mix of files and directories\n"
+            "  %(prog)s --input /builds/repo1 /builds/repo2/specific.tar.zst --output merged.tar.zst\n"
+        )
+    )
+    parser.add_argument('--input', nargs='+', required=True, metavar='PATH',
+                        help='Input archives or directories containing *abixmls*.tar.zst files '
+                             '(directories are searched recursively)')
     parser.add_argument('--output', required=True, metavar='ARCHIVE',
                         help='Output merged .tar.zst archive')
     parser.add_argument('--on-conflict', choices=['warn', 'error'], default='warn',
                         help='Action when the same path appears in multiple inputs (default: warn)')
     args = parser.parse_args()
 
-    missing = [p for p in args.input if not os.path.exists(p)]
-    if missing:
-        sys.exit("error: input file(s) not found: " + ", ".join(missing))
+    inputs = _find_archives(args.input)
 
-    merge(args.input, args.output, on_conflict=args.on_conflict)
+    # exclude the output file itself in case it lives inside a searched directory
+    output_abs = os.path.abspath(args.output)
+    inputs = [p for p in inputs if os.path.abspath(p) != output_abs]
+
+    if not inputs:
+        sys.exit("error: no input archives found")
+
+    print(f"Found {len(inputs)} archive(s) to merge:")
+    for p in inputs:
+        print(f"  {p}")
+
+    merge(inputs, args.output, on_conflict=args.on_conflict)
 
 
 if __name__ == '__main__':
