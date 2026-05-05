@@ -116,13 +116,15 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
     elfs = []
-    for fn in glob.iglob(id + "/**/**", recursive=True):
-        if os.path.isfile(fn) and not os.path.islink(fn):
-            try:
-                if is_shared_library(fn):
-                    elfs.append(fn)
-            except Exception as e:
-                util.warn(str(e))
+    for root, dirs, files in os.walk(id, followlinks=False):
+        for basename in files:
+            fn = os.path.join(root, basename)
+            if os.path.isfile(fn) and not os.path.islink(fn):
+                try:
+                    if is_shared_library(fn):
+                        elfs.append(fn)
+                except Exception as e:
+                    util.warn(str(e))
 
     with ProcessPoolExecutor() as pool:
         futures = {pool.submit(serialize, fn, debug_info_dir, headers_dir): fn
