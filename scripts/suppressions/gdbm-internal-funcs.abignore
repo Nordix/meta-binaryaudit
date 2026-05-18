@@ -1,0 +1,5 @@
+# gdbm internal functions prefixed with _ are not public API.
+# _gdbm_lock_file gained a parameter between versions — internal only.
+[suppress_function]
+  soname_regexp = libgdbm\.so\..*
+  name_regexp = ^_

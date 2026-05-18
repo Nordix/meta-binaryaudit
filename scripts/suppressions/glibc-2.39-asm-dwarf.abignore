@@ -1,0 +1,7 @@
+# glibc 2.39 x86_64 false positive: __floorl / __truncl are implemented in
+# assembly (s_floorl.S / s_truncl.S) on release/2.39/master and carry no DWARF
+# type info, so abidiff sees void->long double.  The C reimplementation
+# (BZ 31600, commit 637bfc392f) only landed in glibc 2.40+.
+[suppress_function]
+  soname_regexp = libm\.so\..*
+  name_regexp = ^__(floorl|truncl)$

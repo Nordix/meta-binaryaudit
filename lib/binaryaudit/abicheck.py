@@ -78,7 +78,11 @@ def serialize_kernel_artifacts(abixml_dir, tree, vmlinux=None, whitelist=None):
 
 
 def compare(ref, cur, suppr=[], headers_dir1=None, headers_dir2=None):
-    cmd = ["abidiff"]
+    using_headers = (headers_dir1 and os.path.isdir(headers_dir1)) or \
+                    (headers_dir2 and os.path.isdir(headers_dir2))
+    cmd = ["abidiff", "--no-unreferenced-symbols"]
+    if not using_headers:
+        cmd += ["--drop-private-types"]
     for sup_fn in suppr:
         cmd += ["--suppr", sup_fn]
     if headers_dir1 and os.path.isdir(headers_dir1):
@@ -109,17 +113,29 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
         debug_info_dir (str): optional path to directory containing debug info (.debug files)
         headers_dir (str): optional path to installed headers, restricts abidw to public API only
     '''
-    for fn in glob.iglob(id + "/**/**", recursive=True):
-        if os.path.isfile(fn) and not os.path.islink(fn):
-            try:
-                if not is_shared_library(fn):
-                    continue
-            except Exception as e:
-                util.warn(str(e))
-                continue
+    from concurrent.futures import ProcessPoolExecutor, as_completed
 
-            # If there's no error, out is the XML representation
-            ret, out, cmd = serialize(fn, debug_info_dir, headers_dir)
+    elfs = []
+    for root, dirs, files in os.walk(id, followlinks=False):
+        for basename in files:
+            fn = os.path.join(root, basename)
+            if os.path.isfile(fn) and not os.path.islink(fn):
+                try:
+                    if is_shared_library(fn):
+                        elfs.append(fn)
+                except Exception as e:
+                    util.warn(str(e))
+
+    with ProcessPoolExecutor() as pool:
+        futures = {pool.submit(serialize, fn, debug_info_dir, headers_dir): fn
+                   for fn in elfs}
+        for future in as_completed(futures):
+            fn = futures[future]
+            try:
+                ret, out, cmd = future.result()
+            except Exception as e:
+                util.warn("abidw exception for '{}': {}".format(fn, e))
+                continue
             util.note(" ".join(cmd))
             if not 0 == ret:
                 util.warn("abidw failed for '{}' (rc={}), skipping: {}".format(fn, ret, out))
@@ -129,9 +145,7 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
                 continue
 
             sn = get_soname_from_xml(out)
-
             out_fn = util.create_path_to_xml(sn, adir, fn)
-
             yield out, out_fn
 
 

@@ -8,10 +8,16 @@ DEPENDS:append:class-target = "${@ ' libabigail-native' if d.getVar('ABI_CHECK_S
 
 IMG_DIR = "${WORKDIR}/image"
 
-python binary_audit_gather_abixml() {
+python do_gather_abixml() {
     import glob, os, time
     import shutil
     from binaryaudit import abicheck
+
+    if d.getVar('CLASSOVERRIDE') != 'class-target' or d.getVar('ABI_CHECK_SKIP') == '1':
+        return
+
+    native_bindir = os.path.join(d.getVar("RECIPE_SYSROOT_NATIVE"), "usr", "bin")
+    os.environ["PATH"] = native_bindir + ":" + os.environ.get("PATH", "")
 
     t0 = time.monotonic()
 
@@ -45,6 +51,13 @@ python binary_audit_gather_abixml() {
         itempath = os.path.join(abixml_dir, item)
         os.unlink(itempath)
 
+    # Ensure abidw is in PATH
+    native_bindir = os.path.join(d.getVar("RECIPE_SYSROOT_NATIVE"), "usr", "bin")
+    staging_bindir_native = d.getVar("STAGING_BINDIR_NATIVE") or ""
+    for bindir in [native_bindir, staging_bindir_native]:
+        if bindir and os.path.isdir(bindir) and bindir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = bindir + ":" + os.environ.get("PATH", "")
+
     kv = d.getVar("KERNEL_VERSION")
     artifact_dir = d.getVar("IMG_DIR")
     ltree = os.path.join(artifact_dir, "usr", "lib", "modules")
@@ -56,15 +69,12 @@ python binary_audit_gather_abixml() {
         out, out_fn = abicheck.serialize_kernel_artifacts(abixml_dir, ltree, vmlinux, whitelist)
         with open(out_fn, "w") as f:
             f.write(out)
-            f.close()
     else:
         headers_dir = os.path.join(d.getVar("D"), d.getVar("includedir").lstrip("/"))
         for out, out_fn in abicheck.serialize_artifacts(abixml_dir, artifact_dir, headers_dir=headers_dir):
             with open(out_fn, "w") as f:
                 f.write(out)
-                f.close()
         if os.path.isdir(headers_dir):
-            import shutil
             stored_headers_dir = os.path.join(dest_basedir, "headers")
             if os.path.exists(stored_headers_dir):
                 shutil.rmtree(stored_headers_dir)
@@ -72,20 +82,40 @@ python binary_audit_gather_abixml() {
 
     t1 = time.monotonic()
     duration_fl = abixml_dir + ".duration"
-    bb.note("binary_audit_gather_abixml: start={}, end={}, duration={}".format(t0, t1, t1 - t0))
+    bb.note("do_gather_abixml: start={}, end={}, duration={}".format(t0, t1, t1 - t0))
     with open(duration_fl, "w") as f:
         f.write(u"{}".format(t1 - t0))
-        f.close()
+
+    # Copy output to sstate staging dir for caching
+    sstate_dir = os.path.join(d.getVar("WORKDIR"), "abixml-sstate")
+    if os.path.exists(sstate_dir):
+        shutil.rmtree(sstate_dir)
+    shutil.copytree(dest_basedir, sstate_dir)
 }
 
-# Target binaries are the only interest.
-do_install[postfuncs] += "${@ 'binary_audit_gather_abixml' if (d.getVar('CLASSOVERRIDE') == 'class-target' and d.getVar('ABI_CHECK_SKIP') != '1') else ''}"
-do_install[vardepsexclude] += "${@ "binary_audit_gather_abixml" if ("class-target" == d.getVar("CLASSOVERRIDE")) else "" }"
+addtask gather_abixml after do_install before do_package
+do_gather_abixml[depends] += "${@ 'libabigail-native:do_populate_sysroot' if d.getVar('ABI_CHECK_SKIP') != '1' and d.getVar('CLASSOVERRIDE') == 'class-target' else ''}"
+do_gather_abixml[dirs] = "${WORKDIR}"
+do_gather_abixml[sstate-inputdirs] = "${WORKDIR}/abixml-sstate"
+do_gather_abixml[sstate-outputdirs] = "${BUILDHISTORY_DIR_PACKAGE}/binaryaudit"
+
+python do_gather_abixml_setscene() {
+    sstate_setscene(d)
+}
+addtask do_gather_abixml_setscene
 
 def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     import glob, os, time
     import oe.qa
     from binaryaudit import abicheck
+
+    # Ensure native sysroot binaries (abidiff, abidw) are in PATH
+    native_bindir = os.path.join(d.getVar("RECIPE_SYSROOT_NATIVE"), "usr", "bin")
+    # Also check the shared native sysroot components for libabigail-native
+    staging_bindir_native = d.getVar("STAGING_BINDIR_NATIVE") or ""
+    for bindir in [native_bindir, staging_bindir_native]:
+        if bindir and os.path.isdir(bindir) and bindir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = bindir + ":" + os.environ.get("PATH", "")
 
     t0 = time.monotonic()
     recipe_suppr = d.getVar("WORKDIR") + "/abi*.suppr"
@@ -117,65 +147,69 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     if not os.path.exists(cur_abidiff_dir):
         bb.utils.mkdirhier(cur_abidiff_dir)
 
-    ref_found = False
-    for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, pkg_arch, pn)):
-        ref_found = True
-        ref_abixml_dir = os.path.join(fpath, "abixml", pkg_arch)
-        # Use the pre-upgrade snapshot if reference is the same buildhistory
-        if os.path.isdir(os.path.join(fpath, "abixml-reference", pkg_arch)):
-            ref_abixml_dir = os.path.join(fpath, "abixml-reference", pkg_arch)
+    def _compare_abixml(ref_abixml_dir, ref_headers_dir):
+        """Compare current abixml against reference. Returns True if reference was found."""
         if not os.path.isdir(ref_abixml_dir):
-            bb.debug(1, "No ABI reference found for '{}' under '{}'".format(pn, ref_abixml_dir))
-            continue
-
-        bb.note("Found reference ABI for '{}' at '{}'".format(pn, fpath))
+            return False
+        found = False
         for xml_fn in os.listdir(cur_abixml_dir):
             if not xml_fn.endswith('xml'):
                 continue
-
             ref_xml_fpath = os.path.join(ref_abixml_dir, xml_fn)
             if not os.path.isfile(ref_xml_fpath):
                 bb.debug(1, "File '{}' is not present in the reference ABI dump".format(xml_fn))
                 continue
-
             cur_xml_fpath = os.path.join(cur_abixml_dir, xml_fn)
             with open(cur_xml_fpath) as f:
                 xml = f.read()
-
             sn = abicheck.get_soname_from_xml(xml)
-            if len(sn) > 0:
-                ref_headers_dir = os.path.join(fpath, "headers")
-                # Use the pre-upgrade snapshot if available
-                if os.path.isdir(os.path.join(fpath, "headers-reference")):
-                    ref_headers_dir = os.path.join(fpath, "headers-reference")
-                cur_headers_dir = os.path.join(dest_basedir, "headers")
+            if not sn:
+                continue
+            found = True
+            cur_headers_dir = os.path.join(dest_basedir, "headers")
+            try:
                 ret, out, cmd = abicheck.compare(ref_xml_fpath, cur_xml_fpath, suppr,
                     headers_dir1=ref_headers_dir, headers_dir2=cur_headers_dir)
+            except FileNotFoundError:
+                bb.warn("%s: abidiff not found, skipping ABI comparison for %s" % (pn, sn))
+                continue
+            bb.note("abidiff command: " + " ".join(cmd))
+            status_bits = abicheck.diff_get_bits(ret)
+            with open(os.path.join(cur_abidiff_dir, os.path.splitext(xml_fn)[0] + ".status"), "w") as f:
+                f.write("\n".join(status_bits))
+            with open(os.path.join(cur_abidiff_dir, os.path.splitext(xml_fn)[0] + ".out"), "w") as f:
+                f.write(out)
+            bb.note("Generated abidiff for {} in {}".format(xml_fn, cur_abidiff_dir))
+            if abicheck.diff_is_incompatible_change(ret):
+                oe.qa.handle_error("abi-changed",
+                    "%s: ABI incompatibly changed from reference build for %s, logs: %s" % (pn, sn, out), d)
+            elif abicheck.diff_is_change(ret):
+                bb.warn("%s: ABI changed (compatible additions) for %s, logs: %s" % (pn, sn, out))
+            else:
+                bb.note("%s: ABI OK - no incompatible changes for %s" % (pn, sn))
+        return found
 
-                bb.note("abidiff command: " + " ".join(cmd))
+    ref_found = False
+    multimach_target_sys = d.getVar("MULTIMACH_TARGET_SYS")
+    for fpath in glob.iglob("{}/packages/{}/{}/binaryaudit".format(ref_basedir, multimach_target_sys, pn)):
+        ref_abixml_dir = os.path.join(fpath, "abixml", pkg_arch)
+        if os.path.isdir(os.path.join(fpath, "abixml-reference", pkg_arch)):
+            ref_abixml_dir = os.path.join(fpath, "abixml-reference", pkg_arch)
+        ref_headers_dir = os.path.join(fpath, "headers")
+        if os.path.isdir(os.path.join(fpath, "headers-reference")):
+            ref_headers_dir = os.path.join(fpath, "headers-reference")
+        if _compare_abixml(ref_abixml_dir, ref_headers_dir):
+            ref_found = True
 
-                status_bits = abicheck.diff_get_bits(ret)
-
-                cur_status_fpath = os.path.join(cur_abidiff_dir, ".".join([os.path.splitext(xml_fn)[0], "status"]))
-                with open(cur_status_fpath, "w") as f:
-                    k = 0
-                    while k + 1 < len(status_bits):
-                        f.write(status_bits[k] + "\n")
-                        k = k + 1
-                    f.write(status_bits[k])
-                cur_out_fpath = os.path.join(cur_abidiff_dir, ".".join([os.path.splitext(xml_fn)[0], "out"]))
-                with open(cur_out_fpath, "w") as f:
-                    f.write(out)
-                bb.note("Generated abidiff for {} in {}".format(xml_fn, cur_abidiff_dir))
-
-                if abicheck.diff_is_incompatible_change(ret):
-                    oe.qa.handle_error("abi-changed",
-                        "%s: ABI incompatibly changed from reference build, logs: %s" % (pn, out), d)
-                elif abicheck.diff_is_change(ret):
-                    bb.warn("%s: ABI changed (compatible additions), logs: %s" % (pn, out))
+    # Fallback: use sstate-cached abixml as reference
+    if not ref_found:
+        sstate_dir = os.path.join(d.getVar("WORKDIR"), "abixml-sstate")
+        ref_found = _compare_abixml(
+            os.path.join(sstate_dir, "abixml", pkg_arch),
+            os.path.join(sstate_dir, "headers"))
 
     if not ref_found:
-        bb.note("No reference ABI found for '{}' in '{}' - package may be new in this build".format(pn, ref_basedir))
+        bb.note("No reference ABI found for '{}' - package may be new in this build".format(pn))
 
     t1 = time.monotonic()
     duration_fl = cur_abidiff_dir + ".duration"

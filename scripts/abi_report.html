@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ABI Compatibility Report</title>
+<link rel="stylesheet" href="abi_report.css">
+<script>
+  var jsonsource = 'abi_report_data.json';
+</script>
+<script src="abi_report.js" defer></script>
+</head>
+<body>
+<div class="container">
+  <div id="loading">Loading report data…</div>
+  <div id="report-content" style="display:none">
+    <h1 id="report-title"></h1>
+    <p class="subtitle" id="report-subtitle"></p>
+
+    <div class="stats-grid" id="stats"></div>
+
+    <h2>Legend</h2>
+    <div class="legend">
+      <span class="legend-item"><span class="badge" style="background:#c0392b">ABI CHANGED</span> abidiff flagged a type-level change such as an enum rename, struct size increase, or sentinel constant change. Does not necessarily mean existing binaries will break (see note below).</span>
+      <span class="legend-item"><span class="badge" style="background:#c0392b">SYMBOLS REMOVED</span> functions or variables were removed. Highest risk: any binary that referenced them will break.</span>
+      <span class="legend-item"><span class="badge" style="background:#e67e22">TYPE CHANGED</span> one or more function parameter or return types changed. This is independent of ABI CHANGED: a library can have TYPE CHANGED without abidiff flagging bit 8, and vice versa.</span>
+      <span class="legend-item"><span class="badge" style="background:#d4ac0d">ADDITIONS ONLY</span> new symbols or fields were added, nothing removed or changed.</span>
+      <span class="legend-item"><span class="badge" style="background:#8e44ad">SONAME BREAK</span> the SONAME version was bumped, indicating an intentional ABI break. Library is not compared.</span>
+      <span class="legend-item"><span class="badge" style="background:#27ae60">CLEAN</span> no ABI changes detected.</span>
+      <span class="legend-item"><span class="badge" style="background:#7f8c8d">TOOL CRASH</span> abidiff crashed while comparing this library. Result is inconclusive. Known issue with libabigail 2.8 on complex types (e.g. libperl).</span>
+    </div>
+    <div class="soname-compat-note">
+      <strong>Note on ABI CHANGED and binary compatibility:</strong>
+      When a library's SONAME is unchanged (e.g. <code>libcurl.so.4</code> remains <code>libcurl.so.4</code>), the upstream maintainers are guaranteeing
+      that existing compiled binaries will continue to work. The <span class="badge" style="background:#c0392b;font-size:0.8em">ABI CHANGED</span> tag
+      reflects a formal type-level change detected by abidiff, such as a renamed enum value, a struct size increase due to new fields,
+      or an internal sentinel constant changing. These do not affect a well-behaved consumer of the library.
+      The real signal to watch is <span class="badge" style="background:#c0392b;font-size:0.8em">SYMBOLS REMOVED</span>: symbols that were removed
+      will break any binary that referenced them.
+    </div>
+
+    <h2>Package Overview</h2>
+    <table class="overview-table">
+      <thead>
+        <tr>
+          <th>Package</th>
+          <th>Version (Old → New)</th>
+          <th>Binaries</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="overview-tbody"></tbody>
+    </table>
+
+    <h2>Package Details</h2>
+    <div class="filter-bar">
+      <input id="search" type="text" placeholder="Search packages…" oninput="filterPackages()">
+      <button class="filter-btn active" data-mode="all"      onclick="setFilter(this,'all')">All</button>
+      <button class="filter-btn"        data-mode="changed"  onclick="setFilter(this,'changed')">With Changes</button>
+      <button class="filter-btn"        data-mode="subtype"  onclick="setFilter(this,'subtype')">Type Changed</button>
+      <button class="filter-btn"        data-mode="removals" onclick="setFilter(this,'removals')">Symbols Removed</button>
+      <button class="filter-btn"        data-mode="incompat" onclick="setFilter(this,'incompat')">ABI Changed</button>
+      <button class="filter-btn"        data-mode="soname"   onclick="setFilter(this,'soname')">SONAME Break</button>
+      <button class="filter-btn" style="margin-left:auto" data-state="collapsed" onclick="toggleAll(this)">Expand All</button>
+    </div>
+    <div id="pkg-sections"></div>
+    <div id="no-results" style="display:none; padding:24px; color:#888; font-size:0.95em;">No packages match this filter.</div>
+  </div>
+  <button class="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+  <div id="fp-note"></div>
+</div>
+</body>
+</html>
