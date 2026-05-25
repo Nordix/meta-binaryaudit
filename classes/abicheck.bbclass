@@ -90,7 +90,7 @@ python do_gather_abixml() {
     sstate_dir = os.path.join(d.getVar("WORKDIR"), "abixml-sstate")
     if os.path.exists(sstate_dir):
         shutil.rmtree(sstate_dir)
-    shutil.copytree(dest_basedir, sstate_dir)
+    shutil.copytree(dest_basedir, sstate_dir, symlinks=True, ignore_dangling_symlinks=True)
 }
 
 addtask gather_abixml after do_install before do_package
