@@ -42,7 +42,7 @@ python do_gather_abixml() {
     if os.path.isdir(ref_headers_dir) and os.listdir(ref_headers_dir):
         if os.path.exists(ref_headers_snap):
             shutil.rmtree(ref_headers_snap)
-        shutil.copytree(ref_headers_dir, ref_headers_snap)
+        shutil.copytree(ref_headers_dir, ref_headers_snap, symlinks=True, ignore_dangling_symlinks=True)
 
     if not os.path.exists(abixml_dir):
         bb.utils.mkdirhier(abixml_dir)
