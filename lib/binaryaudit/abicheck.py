@@ -126,7 +126,9 @@ def serialize_artifacts(adir, id, debug_info_dir=None, headers_dir=None):
                 except Exception as e:
                     util.warn(str(e))
 
-    with ProcessPoolExecutor() as pool:
+    import multiprocessing
+    ctx = multiprocessing.get_context("fork")
+    with ProcessPoolExecutor(mp_context=ctx) as pool:
         futures = {pool.submit(serialize, fn, debug_info_dir, headers_dir): fn
                    for fn in elfs}
         for future in as_completed(futures):
