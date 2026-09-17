@@ -48,20 +48,7 @@
       will break any binary that referenced them.
     </div>
 
-    <h2>Package Overview</h2>
-    <table class="overview-table">
-      <thead>
-        <tr>
-          <th>Package</th>
-          <th>Version (Old → New)</th>
-          <th>Binaries</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="overview-tbody"></tbody>
-    </table>
-
-    <h2>Package Details</h2>
+    <h2>Packages</h2>
     <div class="filter-bar">
       <input id="search" type="text" placeholder="Search packages…" oninput="filterPackages()">
       <button class="filter-btn active" data-mode="all"      onclick="setFilter(this,'all')">All</button>
@@ -72,7 +59,18 @@
       <button class="filter-btn"        data-mode="soname"   onclick="setFilter(this,'soname')">SONAME Break</button>
       <button class="filter-btn" style="margin-left:auto" data-state="collapsed" onclick="toggleAll(this)">Expand All</button>
     </div>
-    <div id="pkg-sections"></div>
+    <table class="overview-table pkg-table">
+      <thead>
+        <tr>
+          <th class="col-toggle"></th>
+          <th>Package</th>
+          <th>Version (Old → New)</th>
+          <th>Binaries</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="pkg-tbody"></tbody>
+    </table>
     <div id="no-results" style="display:none; padding:24px; color:#888; font-size:0.95em;">No packages match this filter.</div>
   </div>
   <button class="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>

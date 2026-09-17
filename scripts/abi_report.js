@@ -260,43 +260,42 @@ function render(data) {
     };
   }
 
-  // Overview table rows
-  const pkgRows = packages.map(p => {
-    const libs    = p.libraries.map(mapLib);
+  // One table: each package is a summary row followed by a hidden detail
+  // row (spanning all columns) that holds the per-binary breakdown.
+  const pkgRows = packages.map((p, i) => {
+    const libs  = p.libraries.map(mapLib);
     const verCell = versionCell(p);
-    return `<tr>
-<td><a href="#${esc(p.package)}" class="pkg-link">${esc(p.package)}</a></td>
+    const rowId = `pkgrow-${i}`;
+
+    // Data attributes drive filtering without re-reading badge DOM.
+    const hasIncompat = libs.some(b => b.is_incompatible);
+    const hasRemovals = libs.some(b => b.func_removed || b.var_removed || b.fsym_removed || b.vsym_removed);
+    const hasSubtype  = libs.some(b => b.has_incompat_funcs);
+    const hasSoname   = libs.some(b => b.soname_changed);
+    const hasCrashed  = libs.some(b => b.crashed);
+    const hasChanged  = libs.some(b => b.has_change);
+    const dataAttrs = `data-name="${esc(p.package.toLowerCase())}"`
+      + ` data-incompat="${hasIncompat}" data-removals="${hasRemovals}"`
+      + ` data-subtype="${hasSubtype}" data-soname="${hasSoname}"`
+      + ` data-crashed="${hasCrashed}" data-changed="${hasChanged}"`;
+
+    const trans = p.version_transitions || [];
+    const verBlock = trans.length > 1 ? `<div class="pkg-ver-detail">${versionCell(p)}</div>` : '';
+    const binariesHtml = libs.map(b => renderBinary(b)).join('');
+
+    const summaryRow = `<tr class="pkg-summary-row" id="${rowId}" ${dataAttrs} onclick="togglePkgRow('${rowId}')">
+<td class="col-toggle"><span class="row-caret">▶</span></td>
+<td class="pkg-name-cell">${esc(p.package)}</td>
 <td>${verCell}</td>
 <td class="num">${libs.length}</td>
 <td>${pkgStatusCell(libs)}</td>
 </tr>`;
-  }).join('');
 
-  // Package detail sections
-  const pkgSections = packages.map(p => {
-    const libs = p.libraries.map(mapLib);
-    const trans = p.version_transitions || [];
-    const multiVer = trans.length > 1;
-    const verInline = multiVer
-      ? `${trans.length} version transitions`
-      : 'v' + (trans.length === 1
-          ? (trans[0].old === trans[0].new ? trans[0].old : `${trans[0].old} → ${trans[0].new}`)
-          : (p.version_old === p.version_new ? p.version_old : `${p.version_old} → ${p.version_new}`));
-    const verBlock = multiVer
-      ? `<div class="pkg-ver-detail">${versionCell(p)}</div>`
-      : '';
-    const binariesHtml = libs.map(b => renderBinary(b)).join('');
-    return `<div class="pkg-section" id="${esc(p.package)}">
-<details class="pkg-coll">
-<summary class="pkg-summary">
-<span class="pkg-name">${esc(p.package)}</span>
-<span class="pkg-meta">${esc(verInline)}</span>
-<span class="pkg-meta">${libs.length} ${libs.length === 1 ? 'binary' : 'binaries'}</span>
-${pkgBadge(libs)}
-</summary>
-<div class="pkg-body">${verBlock}${binariesHtml}</div>
-</details>
-</div>`;
+    const detailRow = `<tr class="pkg-detail-row" data-for="${rowId}" style="display:none">
+<td class="pkg-detail-cell" colspan="5"><div class="pkg-body">${verBlock}${binariesHtml}</div></td>
+</tr>`;
+
+    return summaryRow + detailRow;
   }).join('');
 
   const fpNote = fps.length
@@ -316,11 +315,19 @@ ${pkgBadge(libs)}
   <div class="stat-card purple"><div class="num">${sonameChanged}</div><div class="label">SONAME Break</div></div>
   ${crashed ? `<div class="stat-card grey"><div class="num">${crashed}</div><div class="label">Tool Crash</div></div>` : ''}`;
 
-  document.getElementById('overview-tbody').innerHTML = pkgRows;
-  document.getElementById('pkg-sections').innerHTML   = pkgSections;
+  document.getElementById('pkg-tbody').innerHTML = pkgRows;
   document.getElementById('fp-note').innerHTML        = fpNote;
   document.getElementById('loading').style.display    = 'none';
   document.getElementById('report-content').style.display = '';
+}
+
+function togglePkgRow(rowId) {
+  const summary = document.getElementById(rowId);
+  const detail  = document.querySelector(`.pkg-detail-row[data-for="${rowId}"]`);
+  if (!summary || !detail) return;
+  const open = detail.style.display === 'none';
+  detail.style.display = open ? '' : 'none';
+  summary.classList.toggle('open', open);
 }
 
 function filterPackages() {
@@ -328,21 +335,14 @@ function filterPackages() {
   const mode = document.querySelector('.filter-btn.active').dataset.mode;
   let visible = 0;
 
-  // Build a map of package id -> overview row for synced hiding
-  const overviewRows = {};
-  document.querySelectorAll('#overview-tbody tr').forEach(row => {
-    const link = row.querySelector('a.pkg-link');
-    if (link) overviewRows[link.getAttribute('href').slice(1)] = row;
-  });
-
-  document.querySelectorAll('.pkg-section').forEach(sec => {
-    const name        = sec.id.toLowerCase();
-    const hasIncompat = !!sec.querySelector('.badge[data-type="abichanged"]');
-    const hasRemovals = !!sec.querySelector('.badge[data-type="removals"]');
-    const hasSubtype  = !!sec.querySelector('.badge[data-type="subtype"]');
-    const hasSoname   = !!sec.querySelector('.badge[data-type="soname"]');
-    const hasCrashed  = !!sec.querySelector('.badge[data-type="crashed"]');
-    const hasChanged  = !!sec.querySelector('.binary.changed-bin');
+  document.querySelectorAll('.pkg-summary-row').forEach(row => {
+    const name        = row.dataset.name || '';
+    const hasIncompat = row.dataset.incompat === 'true';
+    const hasRemovals = row.dataset.removals === 'true';
+    const hasSubtype  = row.dataset.subtype === 'true';
+    const hasSoname   = row.dataset.soname === 'true';
+    const hasCrashed  = row.dataset.crashed === 'true';
+    const hasChanged  = row.dataset.changed === 'true';
 
     let show = name.includes(q);
     if (mode === 'changed')  show = show && hasChanged && !hasSoname && !hasCrashed;
@@ -350,27 +350,36 @@ function filterPackages() {
     if (mode === 'removals') show = show && hasRemovals;
     if (mode === 'incompat') show = show && hasIncompat;
     if (mode === 'soname')   show = show && hasSoname;
-    sec.style.display = show ? '' : 'none';
-    if (overviewRows[sec.id]) overviewRows[sec.id].style.display = show ? '' : 'none';
+
+    row.style.display = show ? '' : 'none';
+    const detail = document.querySelector(`.pkg-detail-row[data-for="${row.id}"]`);
+    if (detail && !show) {
+      detail.style.display = 'none';
+      row.classList.remove('open');
+    }
     if (show) visible++;
 
-    sec.querySelectorAll('.binary').forEach(bin => {
-      if (mode === 'incompat')
-        bin.style.display = bin.querySelector('.badge[data-type="abichanged"]') ? '' : 'none';
-      else if (mode === 'removals')
-        bin.style.display = bin.querySelector('.badge[data-type="removals"]') ? '' : 'none';
-      else if (mode === 'subtype')
-        bin.style.display = bin.querySelector('.badge[data-type="subtype"]') ? '' : 'none';
-      else if (mode === 'soname')
-        bin.style.display = bin.querySelector('.badge[data-type="soname"]') ? '' : 'none';
-      else if (mode === 'changed')
-        bin.style.display = (bin.classList.contains('clean') || bin.querySelector('.badge[data-type="soname"]') || bin.querySelector('.badge[data-type="crashed"]')) ? 'none' : '';
-      else
-        bin.style.display = '';
-    });
+    // When a per-status filter is active, narrow the binaries shown inside
+    // the expanded detail row to the matching ones.
+    if (detail) {
+      detail.querySelectorAll('.binary').forEach(bin => {
+        if (mode === 'incompat')
+          bin.style.display = bin.querySelector('.badge[data-type="abichanged"]') ? '' : 'none';
+        else if (mode === 'removals')
+          bin.style.display = bin.querySelector('.badge[data-type="removals"]') ? '' : 'none';
+        else if (mode === 'subtype')
+          bin.style.display = bin.querySelector('.badge[data-type="subtype"]') ? '' : 'none';
+        else if (mode === 'soname')
+          bin.style.display = bin.querySelector('.badge[data-type="soname"]') ? '' : 'none';
+        else if (mode === 'changed')
+          bin.style.display = (bin.classList.contains('clean') || bin.querySelector('.badge[data-type="soname"]') || bin.querySelector('.badge[data-type="crashed"]')) ? 'none' : '';
+        else
+          bin.style.display = '';
+      });
+    }
   });
-  const noResults = document.getElementById('no-results');
-  noResults.style.display = visible === 0 ? '' : 'none';
+
+  document.getElementById('no-results').style.display = visible === 0 ? '' : 'none';
 }
 
 function setFilter(btn, mode) {
@@ -379,13 +388,23 @@ function setFilter(btn, mode) {
   const toggleBtn = document.querySelector('.filter-btn[data-state]');
   toggleBtn.dataset.state = 'collapsed';
   toggleBtn.textContent = 'Expand All';
-  document.querySelectorAll('.pkg-coll, .coll').forEach(d => { d.open = false; });
+  // Collapse all detail rows and any inner collapsibles.
+  document.querySelectorAll('.pkg-detail-row').forEach(d => { d.style.display = 'none'; });
+  document.querySelectorAll('.pkg-summary-row').forEach(r => r.classList.remove('open'));
+  document.querySelectorAll('.coll').forEach(d => { d.open = false; });
   filterPackages();
 }
 
 function toggleAll(btn) {
   const expand = btn.dataset.state !== 'expanded';
-  document.querySelectorAll('.pkg-coll, .coll').forEach(d => { d.open = expand; });
+  document.querySelectorAll('.pkg-summary-row').forEach(row => {
+    // Only expand rows that are currently visible under the active filter.
+    if (row.style.display === 'none') return;
+    const detail = document.querySelector(`.pkg-detail-row[data-for="${row.id}"]`);
+    if (detail) detail.style.display = expand ? '' : 'none';
+    row.classList.toggle('open', expand);
+  });
+  document.querySelectorAll('.coll').forEach(d => { d.open = expand; });
   btn.dataset.state = expand ? 'expanded' : 'collapsed';
   btn.textContent   = expand ? 'Collapse All' : 'Expand All';
 }

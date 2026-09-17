@@ -25,6 +25,19 @@ h2 { color: #003E69; margin: 32px 0 12px; font-size: 1.2em; border-left: 4px sol
 .overview-table tr:hover td { background: #f7f9fc; }
 .pkg-link { color: #003E69; text-decoration: none; font-weight: 600; }
 .pkg-link:hover { text-decoration: underline; }
+
+/* Merged expandable package table */
+.pkg-table .col-toggle { width: 26px; text-align: center; padding-right: 0; }
+.pkg-summary-row { cursor: pointer; }
+.pkg-summary-row:hover td { background: #f7f9fc; }
+.pkg-summary-row .pkg-name-cell { color: #003E69; font-weight: 600; }
+.row-caret { display: inline-block; color: #888; font-size: 0.75em; transition: transform 0.12s ease; }
+.pkg-summary-row.open .row-caret { transform: rotate(90deg); }
+.pkg-summary-row.open td { background: #eef3f8; }
+.pkg-detail-row td { background: #fafbfc; padding: 0; border-bottom: 2px solid #e3e8ee; }
+.pkg-detail-cell .pkg-body { padding: 12px 16px 16px 42px; }
+/* Detail rows should not pick up the generic hover highlight. */
+.pkg-detail-row:hover td { background: #fafbfc; }
 .ver-old { color: #888; }
 .ver-new { color: #003E69; font-weight: 600; }
 .ver-same { color: #555; }
