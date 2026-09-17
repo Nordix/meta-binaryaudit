@@ -49,6 +49,55 @@ function collapsible(label, contentHtml, open) {
 </details>`;
 }
 
+// Small inline status pill for a version-transition line.
+function transStatusPill(status) {
+  const map = {
+    'INCOMPATIBLE':      ['ABI CHANGED',   '#c0392b'],
+    'HAS_REMOVALS':      ['SYMBOLS REMOVED','#c0392b'],
+    'SUBTYPE_RISK':      ['TYPE CHANGED',  '#e67e22'],
+    'SONAME_BREAK':      ['SONAME BREAK',  '#8e44ad'],
+    'COMPATIBLE_CHANGE': ['ADDITIONS ONLY','#d4ac0d'],
+    'CRASHED':           ['TOOL CRASH',    '#7f8c8d'],
+    'CLEAN':             ['CLEAN',         '#27ae60'],
+  };
+  const [label, color] = map[status] || map['CLEAN'];
+  return `<span class="ver-status-pill" style="background:${color}">${esc(label)}</span>`;
+}
+
+// Render the version column as paired old→new transitions grouped by arch,
+// so it's always clear which version was compared against which — and what
+// the ABI verdict is for each arch group.
+function versionCell(p) {
+  const trans = p.version_transitions || [];
+  if (!trans.length) {
+    // Fallback to the flat package-level fields.
+    return p.version_old === p.version_new
+      ? `<span class="ver-same">${esc(p.version_old)}</span>`
+      : `<span class="ver-old">${esc(p.version_old)}</span> → <span class="ver-new">${esc(p.version_new)}</span>`;
+  }
+  // Single transition, no need to list arches.
+  if (trans.length === 1) {
+    const t = trans[0];
+    const ver = t.old === t.new
+      ? `<span class="ver-same">${esc(t.old)}</span>`
+      : `<span class="ver-old">${esc(t.old)}</span> → <span class="ver-new">${esc(t.new)}</span>`;
+    const pill = (t.status && t.status !== 'CLEAN') ? ' ' + transStatusPill(t.status) : '';
+    return `${ver}${pill}`;
+  }
+  // Multiple distinct transitions across architectures: list each on its own
+  // line with the arches it applies to and its own ABI status.
+  const rows = trans.map(t => {
+    const ver = t.old === t.new
+      ? `<span class="ver-same">${esc(t.old)}</span>`
+      : `<span class="ver-old">${esc(t.old)}</span> → <span class="ver-new">${esc(t.new)}</span>`;
+    const arches = (t.arches || []).length ? `<span class="ver-arches">${esc((t.arches || []).join(', '))}</span>` : '';
+    const changedCls = t.old !== t.new ? ' ver-line-changed' : '';
+    const pill = transStatusPill(t.status || 'CLEAN');
+    return `<div class="ver-line${changedCls}">${pill} ${ver} ${arches}</div>`;
+  }).join('');
+  return `<div class="ver-multi">${rows}</div>`;
+}
+
 function renderBinary(b) {
   if (!b.has_change) {
     return `<div class="binary clean">
@@ -82,16 +131,29 @@ ${binaryStatus(b)}
 
   if (b.removed_funcs && b.removed_funcs.length)
     details += collapsible(`Removed Functions (${b.removed_funcs.length})`,
-      funcTable(b.removed_funcs.map(f => [f.signature, f.symbol]), 'rem', ['Function Signature', 'Symbol']));
+      funcTable(b.removed_funcs.map(f => [f.signature, f.symbol]), 'rem', ['Function Signature', 'ELF Symbol']));
   if (b.added_funcs && b.added_funcs.length)
     details += collapsible(`Added Functions (${b.added_funcs.length})`,
-      funcTable(b.added_funcs.map(f => [f.signature, f.symbol]), 'add', ['Function Signature', 'Symbol']));
+      funcTable(b.added_funcs.map(f => [f.signature, f.symbol]), 'add', ['Function Signature', 'ELF Symbol']));
   if (b.changed_funcs && b.changed_funcs.length) {
     const inner = b.changed_funcs.map(f => {
       const detail = f.detail ? `<pre class="subtype-detail">${esc(f.detail)}</pre>` : '<em>No detail captured</em>';
       return collapsible(`${f.signature}  [${f.location}]`, detail);
     }).join('');
     details += collapsible(`Changed Functions (${b.changed_funcs.length})`, inner);
+  }
+  if (b.removed_vars && b.removed_vars.length)
+    details += collapsible(`Removed Variables (${b.removed_vars.length})`,
+      funcTable(b.removed_vars.map(v => [v.declaration, v.symbol]), 'rem', ['Variable Declaration', 'ELF Symbol']));
+  if (b.added_vars && b.added_vars.length)
+    details += collapsible(`Added Variables (${b.added_vars.length})`,
+      funcTable(b.added_vars.map(v => [v.declaration, v.symbol]), 'add', ['Variable Declaration', 'ELF Symbol']));
+  if (b.changed_vars && b.changed_vars.length) {
+    const inner = b.changed_vars.map(v => {
+      const detail = v.detail ? `<pre class="subtype-detail">${esc(v.detail)}</pre>` : '<em>No detail captured</em>';
+      return collapsible(`${v.declaration}  [${v.location}]`, detail);
+    }).join('');
+    details += collapsible(`Changed Variables (${b.changed_vars.length})`, inner);
   }
   if (b.removed_symbols && b.removed_symbols.length)
     details += collapsible(`Removed Symbols not in Debug Info (${b.removed_symbols.length})`,
@@ -187,6 +249,11 @@ function render(data) {
       changed_funcs:   (lib.changed_functions || []).map(f => ({
         signature: f.signature, location: f.location, detail: f.detail
       })),
+      removed_vars:    lib.removed_variables  || [],
+      added_vars:      lib.added_variables    || [],
+      changed_vars:    (lib.changed_variables || []).map(v => ({
+        declaration: v.declaration, location: v.location, detail: v.detail
+      })),
       removed_symbols: lib.removed_symbols || [],
       added_symbols:   lib.added_symbols   || [],
       new_soname:      lib.new_soname || null,
@@ -196,10 +263,7 @@ function render(data) {
   // Overview table rows
   const pkgRows = packages.map(p => {
     const libs    = p.libraries.map(mapLib);
-    const verChanged = p.version_old !== p.version_new;
-    const verCell = verChanged
-      ? `<span class="ver-old">${esc(p.version_old)}</span> → <span class="ver-new">${esc(p.version_new)}</span>`
-      : `<span class="ver-same">${esc(p.version_old)}</span>`;
+    const verCell = versionCell(p);
     return `<tr>
 <td><a href="#${esc(p.package)}" class="pkg-link">${esc(p.package)}</a></td>
 <td>${verCell}</td>
@@ -211,18 +275,26 @@ function render(data) {
   // Package detail sections
   const pkgSections = packages.map(p => {
     const libs = p.libraries.map(mapLib);
-    const verChanged = p.version_old !== p.version_new;
-    const verStr = verChanged ? `${p.version_old} → ${p.version_new}` : p.version_old;
+    const trans = p.version_transitions || [];
+    const multiVer = trans.length > 1;
+    const verInline = multiVer
+      ? `${trans.length} version transitions`
+      : 'v' + (trans.length === 1
+          ? (trans[0].old === trans[0].new ? trans[0].old : `${trans[0].old} → ${trans[0].new}`)
+          : (p.version_old === p.version_new ? p.version_old : `${p.version_old} → ${p.version_new}`));
+    const verBlock = multiVer
+      ? `<div class="pkg-ver-detail">${versionCell(p)}</div>`
+      : '';
     const binariesHtml = libs.map(b => renderBinary(b)).join('');
     return `<div class="pkg-section" id="${esc(p.package)}">
 <details class="pkg-coll">
 <summary class="pkg-summary">
 <span class="pkg-name">${esc(p.package)}</span>
-<span class="pkg-meta">v${esc(verStr)}</span>
+<span class="pkg-meta">${esc(verInline)}</span>
 <span class="pkg-meta">${libs.length} ${libs.length === 1 ? 'binary' : 'binaries'}</span>
 ${pkgBadge(libs)}
 </summary>
-<div class="pkg-body">${binariesHtml}</div>
+<div class="pkg-body">${verBlock}${binariesHtml}</div>
 </details>
 </div>`;
   }).join('');

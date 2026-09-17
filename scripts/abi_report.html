@@ -30,6 +30,15 @@
       <span class="legend-item"><span class="badge" style="background:#7f8c8d">TOOL CRASH</span> abidiff crashed while comparing this library. Result is inconclusive. Known issue with libabigail 2.8 on complex types (e.g. libperl).</span>
     </div>
     <div class="soname-compat-note">
+      <strong>Reading the detail tables — "ELF Symbol" column:</strong>
+      Each added/removed function or variable is shown with two columns. <em>Function Signature</em> / <em>Variable Declaration</em>
+      is the human-readable, demangled declaration (e.g. <code>function bool urcu_bp_poll_state_synchronize_rcu(urcu_gp_poll_state)</code>).
+      <em>ELF Symbol</em> is the actual linker-level name stored in the library's dynamic symbol table (<code>.dynsym</code>) — this is what a
+      consumer binary actually links against. For C they usually match; for C++ the ELF symbol is the mangled name
+      (e.g. <code>_ZN3foo3barEv</code>) while the declaration is the readable form (<code>foo::bar()</code>).
+      <em>Changed Variables</em> / <em>Changed Functions</em> expand to show the full type-level diff (e.g. a struct growing in size).
+    </div>
+    <div class="soname-compat-note">
       <strong>Note on ABI CHANGED and binary compatibility:</strong>
       When a library's SONAME is unchanged (e.g. <code>libcurl.so.4</code> remains <code>libcurl.so.4</code>), the upstream maintainers are guaranteeing
       that existing compiled binaries will continue to work. The <span class="badge" style="background:#c0392b;font-size:0.8em">ABI CHANGED</span> tag

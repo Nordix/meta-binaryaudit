@@ -18,9 +18,36 @@ def parse_log(filepath):
 
     suppressed_fps = list(dict.fromkeys(re.findall(r'^suppressed_fp: (.+)', content, re.MULTILINE)))
 
-    pkg_versions = {}
-    for m in re.finditer(r'^(?:  )?Package: (\S+), Old: ([^\n,]+), New: ([^\n]+)', content, re.MULTILINE):
-        pkg_versions[m.group(1)] = {'old': m.group(2).strip(), 'new': m.group(3).strip()}
+    pkg_versions = {}          # pkg -> {'old','new'}  (aggregated for display)
+    pkg_arch_versions = {}     # (pkg, arch) -> {'old','new'}  (precise, per-arch)
+
+    # Each "Package:" header applies to the libraries that follow it until the
+    # next header. A single package may appear multiple times (once per arch)
+    # with different versions, so associate every header with the arch of the
+    # first "Comparing:" line that follows it and track versions per-arch.
+    hdr_re = re.compile(
+        r'^(?:  )?Package: (\S+), Old: ([^\n,]+), New: ([^\n]+)'
+        r'(?P<body>(?:.*\n)*?)(?=^(?:  )?Package: |\Z)',
+        re.MULTILINE)
+    for m in hdr_re.finditer(content):
+        pkg = m.group(1)
+        old = m.group(2).strip()
+        new = m.group(3).strip()
+        cmp_m = re.search(r'Comparing: (\S+?)/([^/]+)/', m.group('body'))
+        arch = cmp_m.group(2) if cmp_m else None
+        if arch is not None:
+            pkg_arch_versions[(pkg, arch)] = {'old': old, 'new': new}
+        # Aggregate distinct versions across arches for the package-level display.
+        agg = pkg_versions.setdefault(pkg, {'old': [], 'new': []})
+        if old not in agg['old']:
+            agg['old'].append(old)
+        if new not in agg['new']:
+            agg['new'].append(new)
+
+    # Collapse aggregated version lists into display strings (e.g. "0.13.2, 0.15.3").
+    for pkg, v in pkg_versions.items():
+        v['old'] = ', '.join(v['old']) if v['old'] else '?'
+        v['new'] = ', '.join(v['new']) if v['new'] else '?'
 
     # Parse preamble SONAME-skipped libraries (new log format)
     preamble_soname = {}  # old_key -> new_soname
@@ -40,8 +67,10 @@ def parse_log(filepath):
         lib_content = sections[i+2]
 
         lib_name_old = lib_path.split(' -> ')[0]
-        pkg = lib_name_old.split('/')[0]
-        binary = lib_name_old.split('/')[-1]
+        parts_old = lib_name_old.split('/')
+        pkg = parts_old[0]
+        arch = parts_old[1] if len(parts_old) > 2 else None
+        binary = parts_old[-1]
 
         # Trim any trailing "Package:" header that bleeds in from the next section
         lib_content = re.split(r'\n\nPackage:', lib_content)[0]
@@ -88,6 +117,26 @@ def parse_log(filepath):
                 'detail': cm.group(3).rstrip()
             })
 
+        # Extract changed variables with full sub-type detail block.
+        # Format: "  [C] '<decl>' was changed at <file:line>:\n<indented detail...>"
+        # Detail lines are indented; stop at the next change marker, a summary
+        # line, a blank line, the abidiff_rc line, or a status marker.
+        changed_vars = []
+        for vm in re.finditer(
+            r"  \[C\] '((?:const |volatile )?[^']+)' was changed(?: at ([^\s:]+:\d+):\d+)?:\n"
+            r"((?:(?!  \[[CAD]\] |\d+ (?:Added|Removed|Changed|variable|function)\b|abidiff_rc:|[\u26a0\u2713\u2717]|\n)[^\n]*\n)*)",
+            lib_content
+        ):
+            changed_vars.append({
+                'sig': vm.group(1),
+                'loc': vm.group(2) or 'unknown',
+                'detail': vm.group(3).rstrip()
+            })
+
+        # Added / removed variables (declaration + ELF symbol in braces).
+        added_vars   = re.findall(r"\[A\] 'variable ([^']+)'\s+\{([^}]+)\}", lib_content)
+        removed_vars = re.findall(r"\[D\] 'variable ([^']+)'\s+\{([^}]+)\}", lib_content)
+
         removed_sym_blocks = re.findall(
             r'Removed.*?symbol[s]? not referenced.*?debug info:\n((?:\s+\[D\][^\n]+\n)+)', lib_content)
         removed_syms = []
@@ -109,6 +158,9 @@ def parse_log(filepath):
 
         packages[pkg]['binaries'].append({
             'name': binary,
+            'arch': arch,
+            'ver_old': pkg_arch_versions.get((pkg, arch), {}).get('old', '?'),
+            'ver_new': pkg_arch_versions.get((pkg, arch), {}).get('new', '?'),
             'new_soname': None,
             'idx': idx,
             'abidiff_rc': abidiff_rc,
@@ -130,14 +182,19 @@ def parse_log(filepath):
             'removed_funcs': removed_funcs,
             'added_funcs': added_funcs,
             'changed_funcs': changed_funcs,
+            'removed_vars': removed_vars,
+            'added_vars': added_vars,
+            'changed_vars': changed_vars,
             'removed_syms': removed_syms,
             'added_syms': added_syms,
         })
 
     # Add preamble-skipped SONAME libraries (new log format)
     for lib_path, new_soname in sorted(preamble_soname.items()):
-        pkg = lib_path.split('/')[0]
-        binary = lib_path.split('/')[-1]
+        parts = lib_path.split('/')
+        pkg = parts[0]
+        arch = parts[1] if len(parts) > 2 else None
+        binary = parts[-1]
         if pkg not in packages:
             packages[pkg] = {
                 'old_ver': pkg_versions.get(pkg, {}).get('old', '?'),
@@ -145,12 +202,16 @@ def parse_log(filepath):
                 'binaries': []
             }
         packages[pkg]['binaries'].append({
-            'name': binary, 'new_soname': new_soname, 'idx': 0,
+            'name': binary, 'arch': arch,
+            'ver_old': pkg_arch_versions.get((pkg, arch), {}).get('old', '?'),
+            'ver_new': pkg_arch_versions.get((pkg, arch), {}).get('new', '?'),
+            'new_soname': new_soname, 'idx': 0,
             'has_change': True, 'is_incompatible': False, 'has_incompat_funcs': False, 'soname_changed': True, 'is_compatible': False,
             'func_removed': 0, 'func_changed': 0, 'func_added': 0,
             'var_removed': 0, 'var_changed': 0, 'var_added': 0,
             'fsym_removed': 0, 'fsym_added': 0, 'vsym_removed': 0, 'vsym_added': 0,
             'removed_funcs': [], 'added_funcs': [], 'changed_funcs': [],
+            'removed_vars': [], 'added_vars': [], 'changed_vars': [],
             'removed_syms': [], 'added_syms': [],
         })
 
@@ -174,6 +235,34 @@ def _library_status(b):
     return 'CLEAN', []
 
 
+# Aggregate-status ranking (worst wins), mirroring the badge priority in the UI.
+_STATUS_RANK = {
+    'CLEAN': 0,
+    'COMPATIBLE_CHANGE': 1,   # additions only
+    'SONAME_BREAK': 2,
+    'SUBTYPE_RISK': 3,        # type changed
+    'HAS_REMOVALS': 4,        # symbols removed
+    'INCOMPATIBLE': 5,        # abi changed
+    'CRASHED': 6,
+}
+
+
+def _aggregate_status(binaries):
+    """Reduce a set of per-arch library results to a single worst-case label."""
+    worst = 'CLEAN'
+    for b in binaries:
+        status, flags = _library_status(b)
+        if status == 'CHANGED':
+            # Promote to the most severe sub-flag it carries.
+            for f in ('HAS_REMOVALS', 'SUBTYPE_RISK', 'COMPATIBLE_CHANGE'):
+                if f in flags:
+                    status = f
+                    break
+        if _STATUS_RANK.get(status, 0) > _STATUS_RANK.get(worst, 0):
+            worst = status
+    return worst
+
+
 def generate_json(packages, comparison_title, suppressed_fps, output_file):
     ref_name, cur_name = (comparison_title.split(' vs ') + ['', ''])[:2]
     out = {
@@ -182,16 +271,43 @@ def generate_json(packages, comparison_title, suppressed_fps, output_file):
         'packages': []
     }
     for pkg, data in sorted(packages.items()):
+        # Build per-arch version transitions so the report can show which
+        # old version maps to which new version (and on which architectures),
+        # instead of flattening everything into two disconnected lists. Each
+        # transition also carries an aggregate ABI status for its arch group.
+        transitions = []          # ordered list of {'old','new','arches','status'}
+        seen = {}                 # (old,new) -> index into transitions
+        _trans_bins = []          # parallel list of binary lists per transition
+        for b in data['binaries']:
+            old = b.get('ver_old', '?')
+            new = b.get('ver_new', '?')
+            arch = b.get('arch')
+            key = (old, new)
+            if key not in seen:
+                seen[key] = len(transitions)
+                transitions.append({'old': old, 'new': new, 'arches': []})
+                _trans_bins.append([])
+            entry = transitions[seen[key]]
+            if arch and arch not in entry['arches']:
+                entry['arches'].append(arch)
+            _trans_bins[seen[key]].append(b)
+        for t, bins in zip(transitions, _trans_bins):
+            t['status'] = _aggregate_status(bins)
+
         pkg_entry = {
             'package': pkg,
             'version_old': data['old_ver'],
             'version_new': data['new_ver'],
+            'version_transitions': transitions,
             'libraries': []
         }
         for b in data['binaries']:
             status, flags = _library_status(b)
             lib_entry = {
                 'library': b['name'],
+                'arch': b.get('arch'),
+                'version_old': b.get('ver_old', '?'),
+                'version_new': b.get('ver_new', '?'),
                 'status': status,
                 'status_flags': flags,
                 'abidiff_rc': b.get('abidiff_rc', None),
@@ -206,6 +322,9 @@ def generate_json(packages, comparison_title, suppressed_fps, output_file):
                 'removed_functions': [{'signature': f[0], 'symbol': f[1]} for f in b['removed_funcs']],
                 'added_functions':   [{'signature': f[0], 'symbol': f[1]} for f in b['added_funcs']],
                 'changed_functions':  [{'signature': f['sig'], 'location': f['loc'], 'detail': f['detail']} for f in b['changed_funcs']],
+                'removed_variables': [{'declaration': v[0], 'symbol': v[1]} for v in b.get('removed_vars', [])],
+                'added_variables':   [{'declaration': v[0], 'symbol': v[1]} for v in b.get('added_vars', [])],
+                'changed_variables': [{'declaration': v['sig'], 'location': v['loc'], 'detail': v['detail']} for v in b.get('changed_vars', [])],
                 'removed_symbols': b['removed_syms'],
                 'added_symbols':   b['added_syms'],
             }
