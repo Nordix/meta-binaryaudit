@@ -20,18 +20,49 @@ def get_soname(xml_path):
     except:
         return None
 
-def get_package_version(build_dir, package):
-    """Extract package version from buildhistory latest file."""
+def _read_pv(latest_file):
+    """Return the PV value from a buildhistory 'latest' file, or None."""
+    try:
+        for line in latest_file.read_text().split('\n'):
+            if line.startswith('PV = '):
+                return line.split('=', 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
+def get_package_version(build_dir, package, arch=None):
+    """Extract package version from the buildhistory 'latest' file.
+
+    The buildhistory layout is:
+        [packages/]<arch>-<os>/<package>/latest
+    A single package can be built for multiple architectures, each with its
+    own (potentially different) PV. When an ``arch`` is given we resolve the
+    'latest' file that belongs to that specific architecture so the reported
+    version always matches the ABI XML that is actually being compared.
+    """
     build_path = Path(build_dir)
-    latest_files = list(build_path.rglob(f"*/{package}/latest"))
-    if latest_files:
-        try:
-            content = latest_files[0].read_text()
-            for line in content.split('\n'):
-                if line.startswith('PV = '):
-                    return line.split('=')[1].strip()
-        except:
-            pass
+
+    if arch:
+        # The abixml arch (e.g. 'armv7at2-neon') is the leading component of
+        # the buildhistory arch dir (e.g. 'armv7at2-neon-elin-linux-gnueabi').
+        candidates = [
+            p for p in build_path.rglob(f"{package}/latest")
+            if p.parent.name == package
+            and (p.parent.parent.name == arch or p.parent.parent.name.startswith(arch + '-'))
+        ]
+        for c in sorted(candidates):
+            pv = _read_pv(c)
+            if pv:
+                return pv
+
+    # Fallback: exact package-name match at any arch (deterministic order).
+    for latest_file in sorted(build_path.rglob(f"{package}/latest")):
+        if latest_file.parent.name != package:
+            continue
+        pv = _read_pv(latest_file)
+        if pv:
+            return pv
     return "unknown"
 
 def find_abixml_files(build_dir, package=None):
@@ -195,14 +226,14 @@ def _run_compare(args, ref_name, ref_path, cur_name, cur_path):
 
     if soname_changed:
         print(f"\n⚠ SONAME changed (intentional ABI break, not compared):")
-        current_pkg = None
+        current_group = None
         for (old_key, _, _), (new_key, _, _) in sorted(soname_changed):
-            pkg = old_key.split('/')[0]
-            if pkg != current_pkg:
-                old_ver = get_package_version(ref_path, pkg)
-                new_ver = get_package_version(cur_path, pkg)
+            pkg, arch = old_key.split('/')[0], old_key.split('/')[1]
+            if (pkg, arch) != current_group:
+                old_ver = get_package_version(ref_path, pkg, arch)
+                new_ver = get_package_version(cur_path, pkg, arch)
                 print(f"\n  Package: {pkg}, Old: {old_ver}, New: {new_ver}")
-                current_pkg = pkg
+                current_group = (pkg, arch)
             print(f"  {old_key} -> {new_key}")
 
     if not matches:
@@ -210,14 +241,14 @@ def _run_compare(args, ref_name, ref_path, cur_name, cur_path):
         return 1
 
     print(f"\nFound {len(matches)} libraries to compare\n")
-    current_pkg = None
+    current_group = None
     for idx, ((old_key, old_path, old_hdr), (new_key, new_path, new_hdr)) in enumerate(sorted(matches), 1):
-        pkg = old_key.split('/')[0]
-        if pkg != current_pkg:
-            old_ver = get_package_version(ref_path, pkg)
-            new_ver = get_package_version(cur_path, pkg)
+        pkg, arch = old_key.split('/')[0], old_key.split('/')[1]
+        if (pkg, arch) != current_group:
+            old_ver = get_package_version(ref_path, pkg, arch)
+            new_ver = get_package_version(cur_path, pkg, arch)
             print(f"\nPackage: {pkg}, Old: {old_ver}, New: {new_ver}")
-            current_pkg = pkg
+            current_group = (pkg, arch)
         print(f"\n{'='*60}")
         print(f"[{idx}/{len(matches)}] Comparing: {old_key} -> {new_key}")
         print('='*60)
