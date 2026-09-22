@@ -1,0 +1,121 @@
+# Consolidated "internal-namespace symbol leaked into the .so" suppressions.
+#
+# Every rule suppresses the same false-positive class: a library not built with
+# hidden ELF visibility exports its own internal implementation symbols
+# (identified by a documented internal-name prefix) that no public header
+# declares. abidiff compares any exported symbol that carries DWARF regardless
+# of whether it appears in a header, so no abidiff flag (--drop-private-types,
+# --exported-interfaces-only, --headers-dir) removes them — those only affect
+# private *type* reachability, not exported functions/variables. The genuine
+# fix is build-time hidden visibility in the upstream recipe; until then these
+# soname-scoped prefix rules are required on every comparison.
+#
+# name_regexp matches the *demangled* decl name, so C++ namespaces
+# (tbb::detail::) work. Rules are soname-scoped, so there is no
+# cross-contamination from keeping them in one file.
+#
+# Kept in their own files (different class, not a plain prefix rule): the
+# [suppress_type] opaque-handle rules (curl, openssl, libcomps/PyObject), the
+# gcc-sanitizer interceptor-alias rules, the glibc asm/DWARF rule, and the
+# babeltrace flex/bison plugin rule.
+
+
+# --- X11 family: leading-underscore is the documented internal convention ---
+[suppress_function]
+  soname_regexp = ^libX11\.so\..*
+  name_regexp = ^_X
+[suppress_variable]
+  soname_regexp = ^libX11\.so\..*
+  name_regexp = ^_X
+
+[suppress_function]
+  soname_regexp = ^libICE\.so\..*
+  name_regexp = ^_Ice
+[suppress_variable]
+  soname_regexp = ^libICE\.so\..*
+  name_regexp = ^_Ice
+
+[suppress_function]
+  soname_regexp = ^libXt\.so\..*
+  name_regexp = ^_Xt
+[suppress_variable]
+  soname_regexp = ^libXt\.so\..*
+  name_regexp = ^_Xt
+
+
+# --- GNU Readline/History: _rl_ / _hs_ documented private namespace ---
+[suppress_function]
+  soname_regexp = ^lib(readline|history)\.so\..*
+  name_regexp = ^_(rl|hs)_
+[suppress_variable]
+  soname_regexp = ^lib(readline|history)\.so\..*
+  name_regexp = ^_(rl|hs)_
+
+
+# --- ncurses: _nc_ internal namespace (curses.priv.h) ---
+[suppress_function]
+  soname_regexp = ^lib(tinfo|tinfow|ncurses|ncursesw|tic|ticw|form|formw|menu|menuw|panel|panelw)\.so\..*
+  name_regexp = ^_nc_
+[suppress_variable]
+  soname_regexp = ^lib(tinfo|tinfow|ncurses|ncursesw|tic|ticw|form|formw|menu|menuw|panel|panelw)\.so\..*
+  name_regexp = ^_nc_
+
+
+# --- CUPS: leading-underscore _cups*/_ppd* private helpers ---
+[suppress_function]
+  soname_regexp = ^lib(cups|ppd)\.so\..*
+  name_regexp = ^_(cups|ppd)
+[suppress_variable]
+  soname_regexp = ^lib(cups|ppd)\.so\..*
+  name_regexp = ^_(cups|ppd)
+
+
+# --- libcap/libpsx: double-underscore internal shim symbols ---
+[suppress_function]
+  soname_regexp = ^lib(cap|psx)\.so\..*
+  name_regexp = ^__
+[suppress_variable]
+  soname_regexp = ^lib(cap|psx)\.so\..*
+  name_regexp = ^(__|psx_action_key$)
+
+
+# --- gdbm: leading-underscore internal functions ---
+[suppress_function]
+  soname_regexp = libgdbm\.so\..*
+  name_regexp = ^_
+
+
+# --- c-ares: double-underscore ares__ internal prefix ---
+[suppress_function]
+  soname_regexp = ^libcares\.so\..*
+  name_regexp = ^ares__
+[suppress_variable]
+  soname_regexp = ^libcares\.so\..*
+  name_regexp = ^ares__
+
+
+# --- gutenprint: stpi_ internals + libtool _LTX_stp_module_* module entries ---
+[suppress_function]
+  soname_regexp = ^libgutenprint\.so\..*
+  name_regexp = ^stpi_
+[suppress_variable]
+  soname_regexp = ^libgutenprint\.so\..*
+  name_regexp = _LTX_stp_module_(data|version)$
+
+
+# --- jansson: internal impl prefixes (public API is json_* only) ---
+[suppress_function]
+  soname_regexp = ^libjansson\.so\..*
+  name_regexp = ^(hashtable_|jsonp_|strbuffer_|utf8_|do_deep_copy$|do_object_update_recursive$)
+[suppress_variable]
+  soname_regexp = ^libjansson\.so\..*
+  name_regexp = ^hashtable_seed$
+
+
+# --- oneTBB: tbb::detail:: / rml::internal:: implementation namespaces ---
+[suppress_function]
+  soname_regexp = ^libtbb.*\.so\..*
+  name_regexp = ^(tbb::detail::|rml::internal::)
+[suppress_variable]
+  soname_regexp = ^libtbb.*\.so\..*
+  name_regexp = ^(tbb::detail::|rml::internal::)

@@ -1,0 +1,26 @@
+# libcomps ships a CPython extension module, _libpycomps.so. abidiff flags
+# its exported wrapper functions (Libcomps_xml_default, PyCOMPSMDict_clear,
+# PyCOMPSMDict_copy, PyCOMPS_clear) as "ABI incompatible" purely because
+# their PyObject* return/parameter types resolve into CPython's own
+# interpreter structs, whose layout evolves between Python 3.x releases.
+#
+# Confirmed false positive: every incompatible sub-type change in this
+# library bottoms out at CPython's opaque `PyObject` typedef -- i.e.
+# `struct _object` (which reports "type size hasn't changed") and the
+# `struct _typeobject` it points to gaining new tp_* slot function
+# pointers between Python versions. These are CPython's private
+# interpreter internals; extensions only ever touch them via the stable
+# Python C-API through pointers, so this is not part of libcomps's own
+# documented API surface. Directly analogous to the generic `_IO_FILE`
+# glibc rule already in generic-false-positives.abignore.
+#
+# NOTE: libabigail does not honour soname_regexp for [suppress_type]
+# (types are not owned by a single binary), and an anchored ^PyObject$
+# regexp does not match how the typedef is reported -- only the bare
+# `PyObject` matcher actually filters the dependent function diffs.
+# `PyObject` is a globally-unambiguous CPython typedef (no non-Python
+# library defines a type by that name), so a global type suppression here
+# is safe and matches the precedent set by the _IO_FILE / pthread_cond_t
+# rules.
+[suppress_type]
+  name_regexp = PyObject

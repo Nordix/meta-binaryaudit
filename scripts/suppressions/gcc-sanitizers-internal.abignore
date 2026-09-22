@@ -1,0 +1,38 @@
+# GCC sanitizer runtime libraries (libasan/libhwasan/liblsan/libtsan/libubsan)
+# export only the sanitizer runtime's own private ABI: compiler-emitted
+# interceptors (__interceptor_*), the tool entry points the instrumentation
+# calls into (__asan_*, __hwasan_*, __tsan_*, __lsan_*), and the shared
+# __sanitizer_* helpers. None of these are a documented, stable public C API
+# — the sanitizer "public interface" is the compiler instrumentation contract,
+# and these symbols change freely between GCC/compiler-rt versions.
+#
+# The generic rule (generic-false-positives.abignore #7) only matches
+# ^_+interceptor_ / __sanitizer:: / __ubsan::, which leaves these flagged:
+#   - __interceptor_crypt / __interceptor_pthread_mutex_lock etc. ALIAS their
+#     real libc counterpart (alias='crypt', alias='pthread_mutex_lock', ...).
+#     libabigail only suppresses a symbol when *every* alias name matches, so
+#     a plain name_regexp on the __interceptor_ decl name never fires — the
+#     libc alias name has to be matched too. We use symbol_name_regexp (which
+#     is evaluated against every ELF alias name) and enumerate both the
+#     __interceptor_ prefix and the specific aliased libc names. Within these
+#     sanitizer sonames those libc names exist ONLY as weak aliases of the
+#     interceptor wrappers (binding='weak-binding'), never as the library's
+#     own API, so matching them here is scoped-safe.
+#   - __asan_* / __hwasan_* / __tsan_* / __lsan_* prefixes aren't in the
+#     generic regex at all (e.g. removed __tsan_test_only_on_fork, changed
+#     __asan_backtrace_dwarf_add, and the bundled-libbacktrace demangler table
+#     __asan_cplus_demangle_operators[73]->[74] growing by one operator).
+# Confirmed: all removed/changed/added symbols in the scarthgap->wrynose diff
+# for these libraries carry one of these compiler-internal prefixes (verified
+# against the abixml: every removed function is an __interceptor_ alias, every
+# changed decl is __asan_*, and the added ones are __sanitizer_*/__hwasan_*).
+
+# Interceptors + their aliased libc names (matched via symbol_name_regexp so
+# aliases are covered) and the tool-internal __*san_ entry points.
+[suppress_function]
+  soname_regexp = ^lib(asan|hwasan|lsan|tsan|ubsan)\.so\..*
+  symbol_name_regexp = ^(_+interceptor_|__(a|hwa|t|l)san_|__sanitizer|crypt$|crypt_r$|getcontext$|pthread_mutex_lock$|pthread_mutex_unlock$|__pthread_mutex_lock$|__pthread_mutex_unlock$)
+
+[suppress_variable]
+  soname_regexp = ^lib(asan|hwasan|lsan|tsan|ubsan)\.so\..*
+  symbol_name_regexp = ^(_+interceptor_|__(a|hwa|t|l)san_|__sanitizer)
