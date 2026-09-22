@@ -1,0 +1,19 @@
+# curl's Curl_easy and Curl_multi are opaque handles: the public API (curl.h,
+# multi.h) only ever exposes them as CURL*/CURLM* pointers via curl_easy_init()
+# / curl_multi_init(). No public header defines their members, so callers can
+# never depend on their internal layout. Layout changes across curl versions
+# (e.g. curl_multi_get_handles()'s Curl_easy** return type) are implementation
+# detail, not a public ABI break. See docs/libcurl/ABI.md upstream.
+[suppress_type]
+  soname_regexp = libcurl\.so\..*
+  type_name_regexp = ^Curl_(easy|multi)$
+
+# curl retires removed option/error slots into CURL*_OBSOLETE* placeholders
+# instead of renumbering everything else (see CURLOPT_OBSOLETE* in curl.h).
+# Enumerator value reuse under an OBSOLETE name is intentional and documented
+# upstream; existing callers only ever use the symbolic constant names, never
+# raw values, so this is source- and binary-compatible.
+[suppress_type]
+  soname_regexp = libcurl\.so\..*
+  type_name_regexp = ^(CURLoption|CURLcode)$
+  changed_enumerators_regexp = .*OBSOLETE.*

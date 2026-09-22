@@ -1,0 +1,25 @@
+# babeltrace2's CTF plugin (babeltrace-plugin-ctf.so) embeds a flex/bison
+# scanner+parser for the CTF trace metadata grammar. flex is configured with
+# a reentrant scanner and `%option prefix="bt_yy"`, so it emits the standard
+# flex/bison generated symbols under a `bt_yy`-prefixed (and bare `yyparse`)
+# namespace: bt_yy_create_buffer, bt_yy_scan_bytes, bt_yylex_init,
+# bt_yyget_*/bt_yyset_*, bt_yyalloc/bt_yyfree/bt_yyrealloc, yyparse, etc.
+#
+# These are compiler/generator-emitted lexer/parser internals — never part of
+# babeltrace2's documented public API (the public API is the `bt_*` surface in
+# libbabeltrace2.so.0, e.g. bt_clock_class_*, bt_field_class_*). They live only
+# inside the dlopen'd CTF plugin, are not linked against by API consumers, and
+# their set/signature shifts whenever the vendored flex/bison output is
+# regenerated. Confirmed false positive: the entire "28 Removed functions"
+# incompatibility in the 2.0.6 -> 2.1.2 comparison for babeltrace-plugin-ctf.so
+# consists solely of these bt_yy* / yyparse generated symbols.
+#
+# Scoped to the CTF plugin soname so it cannot mask real ABI changes in the
+# public libbabeltrace2.so.0.
+[suppress_function]
+  soname_regexp = ^babeltrace-plugin-ctf\.so.*
+  name_regexp = ^(bt_yy|yyparse$)
+
+[suppress_variable]
+  soname_regexp = ^babeltrace-plugin-ctf\.so.*
+  name_regexp = ^(bt_yy|yy)
