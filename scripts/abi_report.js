@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2026 Ericsson Software Technology AB
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
 document.addEventListener('DOMContentLoaded', () => {
   fetch(jsonsource)
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })

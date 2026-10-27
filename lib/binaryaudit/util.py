@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Anatol Belski
+#
+# SPDX-License-Identifier: MIT
+
 import os
 import sys
 import logging

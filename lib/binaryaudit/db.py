@@ -1,4 +1,7 @@
 #!/usr/bin/python3
+# Copyright (C) 2021 Anatol Belski
+#
+# SPDX-License-Identifier: MIT
 
 from sqlalchemy.engine.url import URL
 from sqlalchemy import MetaData, create_engine
