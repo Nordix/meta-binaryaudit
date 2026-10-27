@@ -4,61 +4,87 @@ Yocto layer for ELF binary compliance validation.
 
 # Dependencies
 
-* URI: http://git.yoctoproject.org/clean/cgit.cgi/poky
+* URI: https://git.openembedded.org/openembedded-core
 * Branch: scarthgap|whinlatter|wrynose|blacksail
+
+# Maintainers
+
+* Adarsh Jagadish Kamini <adarsh.jagadish.kamini@est.tech>
+
+# Contributing
+
+Send patches as pull requests against the `main` branch of
+https://github.com/Nordix/meta-binaryaudit. See CONTRIBUTING.md for the
+commit message format.
+
+# License
+
+The layer metadata (classes, conf, recipes) and the Python module under `lib/`
+are MIT licensed, see `LICENSE.MIT`.
+
+Everything under `scripts/` is GPL-2.0-only, see `LICENSE.GPL-2.0-only`. The
+source files there carry an SPDX license identifier.
 
 # ABI compliance
 
-The ABI compliance mechanism relies on [libabigail](https://sourceware.org/git/?p=libabigail.git).
+The ABI compliance mechanism relies on [libabigail](https://sourceware.org/libabigail/).
 
-The included libabigail recipe is configurable the usual way through [PACKAGECONFIG](https://www.yoctoproject.org/docs/3.1/ref-manual/ref-manual.html#var-PACKAGECONFIG). Several features will be turned on automatically depending on the build configuration. To see all the configuration options please inspect the recipe.
+The included libabigail recipe is configurable through
+[PACKAGECONFIG](https://docs.yoctoproject.org/ref-manual/variables.html#term-PACKAGECONFIG).
+See the recipe for the available options.
 
 ## ABI serialization
 
-The ABI check can be activated by appending the `abicheck` bbclass to the bbclass inherit list. The class will attach several function calls to the recipe `install` tasks, in order to handle creation and further usage of the ABI related data. In your `local.conf`, add the following:
+Enable the ABI check by adding the `abicheck` class to `INHERIT` in `local.conf`:
 
 ```bitbake
 INHERIT += "abicheck"
 ```
 
-With the class inherited, the serialized ABI representation will be integrated into the build history. Saving the build history will allow us to compare the current build
-with a baseline ABI data from a previous build.
+The class adds a `do_gather_abixml` task after `do_install` which writes an
+ABI dump of every shared library to buildhistory. Keep the buildhistory of a
+build to use it as a baseline for later builds.
 
-After your first build to collect baseline data, set the variable below to the buildhistory directory, which we now take as a baseline:
+After the baseline build, point the layer at its buildhistory directory:
 
 ```bitbake
 BINARY_AUDIT_REFERENCE_BASEDIR = "/path/to/buildhistory.baseline"
 ```
 
-The ABI comparison is done during [the Package QA mechanism](https://docs.yoctoproject.org/3.2/ref-manual/ref-qa-checks.html). ABI changes are reported as **warnings by default**, no configuration is required to enable this.
+The comparison runs as part of
+[package QA](https://docs.yoctoproject.org/ref-manual/qa-checks.html) and
+uses [abidiff](https://sourceware.org/libabigail/manual/abidiff.html).
+Incompatible ABI changes are reported as `abi-changed` warnings by default.
 
-To promote ABI changes to a build error instead, add the following to your `local.conf`:
+To make them build errors instead, add the following to `local.conf`:
 
 ```bitbake
 ERROR_QA:append = " abi-changed"
 WARN_QA:remove = " abi-changed"
 ```
 
-The tools used to perform the compatibility verification is [abicompat](https://sourceware.org/libabigail/manual/abicompat.html).
+Set `ABI_CHECK_SKIP = "1"` in a recipe to skip it.
 
 ## CI / command-line usage
 
 To enable abicheck for a single build without modifying `local.conf`, use the
-`-R` flag to inject the provided conf fragment:
+`-R` flag to read the provided conf fragment:
 
 ```bash
 bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf <target>
 ```
 
-To also set a reference baseline for comparison in the same invocation:
+To set the reference baseline from the environment, the variable has to be
+allowed through first:
 
 ```bash
+export BB_ENV_PASSTHROUGH_ADDITIONS="$BB_ENV_PASSTHROUGH_ADDITIONS BINARY_AUDIT_REFERENCE_BASEDIR"
 BINARY_AUDIT_REFERENCE_BASEDIR=/path/to/buildhistory.baseline \
 bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf <target>
 ```
 
-To promote ABI changes to build errors (e.g. in a gating CI job), stack a
-second fragment:
+To make ABI changes build errors (e.g. in a gating CI job), add a second
+fragment:
 
 ```bash
 bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf \
@@ -66,31 +92,53 @@ bitbake -R /path/to/meta-binaryaudit/conf/abicheck-enable.conf \
 ```
 
 The two conf fragments are:
-- `conf/abicheck-enable.conf` — adds `abicheck` to `INHERIT`
-- `conf/abicheck-errors.conf` — moves `abi-changed` from `WARN_QA` to `ERROR_QA`
+- `conf/abicheck-enable.conf`: adds `abicheck` to `INHERIT` and
+  `nativesdk-libabigail` to the SDK
+- `conf/abicheck-errors.conf`: moves `abi-changed` from `WARN_QA` to `ERROR_QA`
+
+## Comparing builds outside bitbake
+
+At the end of each build, all ABI dumps are also packed into a single archive:
+
+```
+${BUILDHISTORY_DIR}/${DISTRO}-${DISTRO_VERSION}-abixmls.tar.zst
+```
+
+Keep this archive instead of the whole buildhistory directory to compare
+against later builds. The scripts under `scripts/` compare two archives (or
+two buildhistory directories) and generate an HTML and JSON report:
+
+```bash
+python3 scripts/abi_compare.py \
+    --ref-build     old /path/to/old-abixmls.tar.zst \
+    --current-build new /path/to/new-abixmls.tar.zst > compare.log
+python3 scripts/generate_abi_report.py compare.log report.html
+```
+
+The scripts need `abidiff` from libabigail on the host (or pass its path with
+`--abidiff`) and the `zstandard` Python package. See `scripts.md` for all
+options, merging per-arch archives, and the bundled suppression files.
 
 ## ABI error suppressions
 
-An ABI [suppression specification file](https://sourceware.org/libabigail/manual/libabigail-concepts.html#suppr-spec-label) can be used to instruct the tooling to ignore certain types of errors.
+An ABI [suppression specification file](https://sourceware.org/libabigail/manual/libabigail-concepts.html#suppr-spec-label)
+can be used to tell abidiff to ignore certain changes.
 
-In order to add a global suppression file, modify the variable `GLOBAL_SUPPRESSION_FILE` in `local.conf` to be the suppression's filepath:
+To use a global suppression file, set its path in `local.conf`:
 
-`BINARY_AUDIT_GLOBAL_SUPPRESSION_FILE = "/path/to/suppression.file"`
-
-To add recipe-specific suppressions, add the filepath to the suppression to the recipe's `SRC_URI` list. The suppression file must also have a name which follows the regex `abi*.suppr`. Here is an example for adding a suppression called `abi_openssl.suppr` to the `openssl` recipe:
-
-Suppression file is located in `/path.to.poky/poky/meta/recipes-connectivity/openssl/openssl/abi_openssl.suppr`
-
-The `SCR_URI` variable in `/path.to.poky/poky/meta/recipes-connectivity/openssl/openssl_1.1.1k.bb` looks like this:
-
+```bitbake
+BINARY_AUDIT_GLOBAL_SUPPRESSION_FILE = "/path/to/suppression.file"
 ```
-SRC_URI = "http://www.openssl.org/source/openssl-${PV}.tar.gz \
-           file://run-ptest \
-           file://0001-skip-test_symbol_presence.patch \
-           file://0001-buildinfo-strip-sysroot-and-debug-prefix-map-from-co.patch \
-           file://afalg.patch \
-           file://reproducible.patch \
-           file://abi_openssl.suppr \
-           "
+
+To add a suppression for one recipe, add the file to the recipe's `SRC_URI`
+from a bbappend. The file name must match `abi*.suppr`. For example, for
+openssl:
+
+```bitbake
+# openssl_%.bbappend
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://abi_openssl.suppr"
 ```
-By adding a suppression file in this manner, it will show up in the recipe's `WORKDIR` and added to the `abidiff --suppression` call.
+
+The file is unpacked to the recipe's `WORKDIR` and passed to abidiff with
+`--suppr`.
