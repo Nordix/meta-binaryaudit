@@ -349,15 +349,20 @@ if __name__ == '__main__':
     json_file = base + '.json'
     generate_json(packages, comparison_title, suppressed_fps, json_file)
 
+    out_dir = os.path.dirname(output_html) or '.'
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    for asset in ('abi_report.html', 'abi_report.css', 'abi_report.js'):
-        shutil.copy(os.path.join(script_dir, asset), os.path.join(os.path.dirname(output_html) or '.', asset))
+    for asset in ('abi_report.css', 'abi_report.js'):
+        shutil.copy(os.path.join(script_dir, asset), os.path.join(out_dir, asset))
 
+    # The HTML loads the JSON path from an external abiversion.js rather than an
+    # inline <script> block. Some static web servers (e.g. Artifactory) serve
+    # HTML with a Content-Security-Policy that blocks inline scripts but allows
+    # same-origin external ones, which would otherwise break loading the report.
     json_basename = os.path.basename(json_file)
-    with open(os.path.join(script_dir, 'abi_report.html')) as src, open(output_html, 'w') as dst:
-        dst.write(src.read().replace(
-            "var jsonsource = 'abi_report_data.json'",
-            f"var jsonsource = '{json_basename}'"
-        ))
+    with open(os.path.join(out_dir, 'abiversion.js'), 'w') as vf:
+        vf.write(f"var jsonsource = '{json_basename}';\n")
+
+    # Copy the HTML template verbatim; it references abiversion.js for the path.
+    shutil.copy(os.path.join(script_dir, 'abi_report.html'), output_html)
     print(f"HTML written to:   {output_html}")
     print(f"JSON written to:   {json_file}")

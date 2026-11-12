@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Anatol Belski
+# Copyright (C) 2026 Ericsson Software Technology AB
+#
+# SPDX-License-Identifier: MIT
 
 inherit binaryaudit
 inherit insane
@@ -42,7 +46,7 @@ python do_gather_abixml() {
     if os.path.isdir(ref_headers_dir) and os.listdir(ref_headers_dir):
         if os.path.exists(ref_headers_snap):
             shutil.rmtree(ref_headers_snap)
-        shutil.copytree(ref_headers_dir, ref_headers_snap)
+        shutil.copytree(ref_headers_dir, ref_headers_snap, symlinks=True, ignore_dangling_symlinks=True)
 
     if not os.path.exists(abixml_dir):
         bb.utils.mkdirhier(abixml_dir)
@@ -90,7 +94,7 @@ python do_gather_abixml() {
     sstate_dir = os.path.join(d.getVar("WORKDIR"), "abixml-sstate")
     if os.path.exists(sstate_dir):
         shutil.rmtree(sstate_dir)
-    shutil.copytree(dest_basedir, sstate_dir)
+    shutil.copytree(dest_basedir, sstate_dir, symlinks=True, ignore_dangling_symlinks=True)
 }
 
 addtask gather_abixml after do_install before do_package

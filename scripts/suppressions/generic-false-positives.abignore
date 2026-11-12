@@ -1,19 +1,29 @@
 # Generic false-positive suppressions — safe to apply across all libraries.
 # Per-library rules (soname-scoped) live in their own files alongside this one.
 
-# 1. Any symbol versioned *_PRIVATE is an explicit internal contract.
+# 1. Any symbol versioned *_PRIVATE or *_INTERNAL (optionally followed by a
+#    version suffix, e.g. LIBDBUS_PRIVATE_1.14.10, NETTLE_INTERNAL_8_11,
+#    NSS_NIS_PRIVATE_2.0) is an explicit internal contract, not public ABI.
 [suppress_function]
-  symbol_version_regexp = .*_PRIVATE$
+  symbol_version_regexp = .*_(PRIVATE|INTERNAL)(_[0-9._]+)?$
 
 [suppress_variable]
-  symbol_version_regexp = .*_PRIVATE$
+  symbol_version_regexp = .*_(PRIVATE|INTERNAL)(_[0-9._]+)?$
 
-# 2. C++ STL internals (std::, __gnu_cxx::, etc.) — never public ABI.
+# 2. C++ STL/libstdc++ internals — compiler-emitted template instantiations
+#    (e.g. std::vector<T>::_M_realloc_insert/_M_realloc_append,
+#    std::_Rb_tree<...>::_M_get_insert_*, std::_Hashtable<...>::_M_rehash,
+#    std::__do_uninit_copy, __gnu_cxx:: internals). These shift names/
+#    signatures between GCC/libstdc++ versions and are never part of any
+#    library's documented public API — they leak into abidiff output only
+#    because the library wasn't built with hidden template visibility.
+#    NOTE: name_regexp matches the *demangled* function name, not the raw
+#    mangled symbol (^_ZNSt would never match here).
 [suppress_function]
-  name_regexp = ^_ZNSt
+  name_regexp = ^(std::|__gnu_cxx::)
 
 [suppress_type]
-  name_regexp = ^_ZNSt
+  name_regexp = ^(std::|__gnu_cxx::)
 
 # 3. _IO_FILE and its internal fields — always a glibc implementation detail.
 [suppress_type]
@@ -27,3 +37,33 @@
 #    Safe for functions; types are suppressed only by name, not layout.
 [suppress_function]
   name_regexp = __private__
+
+# 6. Vendored/bundled third-party library internals exposed via inline
+#    versioned namespaces. These are implementation details of a *different*
+#    library statically linked/vendored in, not the containing library's own
+#    public API, and they shift names whenever the vendored copy is bumped.
+#    Examples seen in practice: fmt::v9::detail::* / fmt::v10::detail::*
+#    (vendored {fmt}), absl::lts_20240116::* (vendored Abseil LTS snapshot —
+#    suppressed as a *type* rule too, since the version tag often only shows
+#    up in a parameter/member type, e.g. re2's Mutex* parameter, not in the
+#    outer function's own name).
+[suppress_function]
+  name_regexp = ^(fmt::v[0-9]+::detail::|absl::lts_[0-9]+::)
+
+[suppress_type]
+  name_regexp = ^(fmt::v[0-9]+::detail::|absl::lts_[0-9]+::)
+
+# 7. Compiler sanitizer runtime internals (ASan/HWASan/TSan/UBSan/LSan).
+#    These are the sanitizer's own private runtime ABI (interceptors,
+#    internal allocator/report machinery) — never a stable public C API,
+#    and they change freely between GCC/compiler-rt versions. NOTE: many
+#    interceptor symbols alias their real libc counterpart (e.g.
+#    __interceptor_crypt aliases crypt); libabigail requires ALL aliases of
+#    a symbol to match a name/symbol_name regexp for suppression to apply,
+#    so a handful of these may still surface per GCC version bump and need
+#    a one-off soname-scoped suppression if they show up in a real report.
+[suppress_function]
+  name_regexp = ^_+interceptor_|__sanitizer::|__ubsan::
+
+[suppress_variable]
+  name_regexp = ^_+interceptor_|__sanitizer::|__ubsan::

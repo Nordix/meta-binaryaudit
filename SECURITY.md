@@ -6,11 +6,13 @@ please report it to us as described below.
 
 ## Reporting a vulnerability
 
-**Please do not open a public issue, pull request, or discussion for a security problem.**
+**Please do not open a public issue, pull request, or discussion for a security
+problem.**
 
-Instead,use the "Report a vulnerability" button on this repository's Security tab, or go directly to:
+Instead, send an email to:
 
-https://github.com/Nordix/meta-binaryaudit/security/advisories/new
+* To: Adarsh Jagadish Kamini <adarsh.jagadish.kamini@est.tech>
+* Cc: Daniel Turull <daniel.turull@ericsson.com>
 
 We aim to acknowledge reports within 5 business days and to coordinate a
 disclosure timeline with you, targeting remediation within 90 days.
