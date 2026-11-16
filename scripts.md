@@ -110,6 +110,23 @@ oe-run-native libabigail-native abidiff --version
 Alternatively, pass the full path to the `abidiff` binary built under
 `tmp/sysroots-components/x86_64/libabigail-native/` using `--abidiff`.
 
+### libabigail versions
+
+Archives built with libabigail 2.x cannot be compared with archives built
+with libabigail 3.0. The dumps use different ABIXML format major versions
+(2.x and 3.x), and abidiff cannot compare across them. An older abidiff also
+reads dumps from a newer libabigail without an error but misses removed and
+added functions.
+
+`abi_compare.py` therefore checks the dumps before comparing and stops with an
+error if:
+
+* the reference and current dumps use different ABIXML major versions, or
+* `abidiff` is older than the ABIXML major version of the dumps.
+
+After upgrading libabigail, regenerate the reference archive with the new
+version and use an `abidiff` from the same or a newer libabigail.
+
 ### SONAME version matching
 
 Libraries are matched across builds by their base soname (everything up to and
