@@ -1,19 +1,18 @@
-# Copyright (C) 2021 Anatol Belski
-# Copyright (C) 2026 Ericsson Software Technology AB
-#
-# SPDX-License-Identifier: MIT
-
 SUMMARY = "The ABI Generic Analysis and Instrumentation Library"
-HOMEPAGE = "https://sourceware.org/libabigail"
-LICENSE = "LGPL-3.0-or-later"
-SECTION = "devel"
+HOMEPAGE = "https://sourceware.org/libabigail/"
 
-SRC_URI = "https://mirrors.kernel.org/sourceware/libabigail/libabigail-${PV}.tar.xz"
-SRC_URI[sha256sum] = "b4b86baa3105a28ada25091f1ef0535e7a60616d3d5d4cb1ee2aceaba341d738"
-
+LICENSE = "Apache-2.0-with-LLVM-exception"
 LIC_FILES_CHKSUM = "file://LICENSE.txt;md5=0bcd48c3bdfef0c9d9fd17726e4b7dab"
 
-DEPENDS += "elfutils libxml2 xxhash"
+SRC_URI = "http://mirrors.kernel.org/sourceware/${BPN}/${BP}.tar.xz \
+           file://0001-configure-do-not-add-prefix-include-when-cross-compil.patch \
+           file://0002-configure-use-DW_CFLAGS-to-look-for-elfutils-version.patch \
+           "
+SRC_URI[sha256sum] = "d34ea7c4b150f61e22edb1d16157e12c43fd18f8e8f09abce053d82ccaf92e06"
+
+SECTION = "devel"
+
+DEPENDS += "elfutils libxml2 xxhash xz"
 
 python __anonymous() {
     if d.getVar("UNPACKDIR"):
@@ -39,7 +38,6 @@ PACKAGECONFIG[python3] = "--enable-python3,--disable-python3,python3"
 
 RDEPENDS:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'python3', 'python3', '', d)}"
 RDEPENDS:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'deb', 'dpkg', '', d)}"
-
 
 PACKAGECONFIG:remove:class-native = "rpm deb"
 PACKAGECONFIG:remove:class-nativesdk = "rpm deb"
