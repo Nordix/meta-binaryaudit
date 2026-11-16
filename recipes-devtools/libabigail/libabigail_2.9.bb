@@ -38,5 +38,6 @@ RDEPENDS:${PN} += "${@bb.utils.contains('PACKAGECONFIG', 'deb', 'dpkg', '', d)}"
 
 PACKAGECONFIG:remove:class-native = "rpm deb"
 PACKAGECONFIG:remove:class-nativesdk = "rpm deb"
+PACKAGECONFIG:remove:class-target = "rpm deb"
 
 BBCLASSEXTEND = "native nativesdk"
