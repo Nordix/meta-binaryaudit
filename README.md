@@ -51,6 +51,10 @@ After the baseline build, point the layer at its buildhistory directory:
 BINARY_AUDIT_REFERENCE_BASEDIR = "/path/to/buildhistory.baseline"
 ```
 
+The baseline must be created with the same major version of libabigail as
+the current build. abidiff cannot compare dumps from libabigail 2.x with dumps
+from 3.0, so regenerate the baseline after upgrading.
+
 The comparison runs as part of
 [package QA](https://docs.yoctoproject.org/ref-manual/qa-checks.html) and
 uses [abidiff](https://sourceware.org/libabigail/manual/abidiff.html).
@@ -116,8 +120,10 @@ python3 scripts/generate_abi_report.py compare.log report.html
 ```
 
 The scripts need `abidiff` from libabigail on the host (or pass its path with
-`--abidiff`) and the `zstandard` Python package. See `scripts.md` for all
-options, merging per-arch archives, and the bundled suppression files.
+`--abidiff`) and the `zstandard` Python package. The host abidiff must be at
+least the libabigail version the layer builds (3.0); `abi_compare.py` stops
+with an error otherwise. See `scripts.md` for all options, merging per-arch
+archives, and the bundled suppression files.
 
 ## ABI error suppressions
 

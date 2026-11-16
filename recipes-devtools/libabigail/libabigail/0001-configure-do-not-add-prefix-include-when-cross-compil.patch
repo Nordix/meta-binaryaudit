@@ -1,0 +1,25 @@
+From: Adarsh Jagadish Kamini <adarsh.jagadish.kamini@est.tech>
+Subject: [PATCH] configure: do not add ${prefix}/include when cross compiling
+
+Since 3.0, configure adds -I${prefix}/include to CPPFLAGS while it
+checks for declarations in elf.h and dwarf.h. When cross compiling,
+${prefix}/include is /usr/include on the build host, and the compiler
+rejects it with -Wpoison-system-directories.
+
+The headers are found through the sysroot in that case, so only add
+the prefixed include dir for native builds.
+
+Upstream-Status: Pending
+Signed-off-by: Adarsh Jagadish Kamini <adarsh.jagadish.kamini@est.tech>
+---
+--- a/configure.ac
++++ b/configure.ac
+@@ -1202,7 +1202,7 @@
+ AM_CONDITIONAL([ENABLE_LIBABIGAIL_MULTITHREADING],[test "x$ENABLE_MULTITHREADING" = "xyes"])
+ 
+ use_prefixed_includedir=""
+-if test x$prefix != x; then
++if test x$prefix != x && test x$cross_compiling != xyes; then
+   use_prefixed_includedir=$prefix
+ fi
+ 

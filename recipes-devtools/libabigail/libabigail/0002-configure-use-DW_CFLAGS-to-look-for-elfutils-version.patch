@@ -1,0 +1,25 @@
+From: Adarsh Jagadish Kamini <adarsh.jagadish.kamini@est.tech>
+Subject: [PATCH] configure: use DW_CFLAGS to look for elfutils/version.h
+
+The check for elfutils/version.h adds -I$EU_INCLUDEDIR to CPPFLAGS.
+EU_INCLUDEDIR comes from pkg-config --variable, which does not prefix
+the sysroot, so a cross build gets -I/usr/include and the compiler
+rejects it with -Wpoison-system-directories. The check then fails and
+multithreading support is turned off.
+
+Use DW_CFLAGS instead, which pkg-config already makes sysroot aware.
+
+Upstream-Status: Pending
+Signed-off-by: Adarsh Jagadish Kamini <adarsh.jagadish.kamini@est.tech>
+---
+--- a/configure.ac
++++ b/configure.ac
+@@ -1096,7 +1096,7 @@
+ if test x$ENABLE_MULTITHREADING != xno; then
+    saved_CPPFLAGS="$CPPFLAGS"
+    
+-   CPPFLAGS="-I$EU_INCLUDEDIR $CPPFLAGS"
++   CPPFLAGS="$DW_CFLAGS $CPPFLAGS"
+    AC_CHECK_HEADER([elfutils/version.h],
+ 		   [HAS_ELFUTILS_VERSION=yes],
+ 		   [AC_MSG_NOTICE([could not find elfutils/version.h])])
