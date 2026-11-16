@@ -184,7 +184,9 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
             with open(os.path.join(cur_abidiff_dir, os.path.splitext(xml_fn)[0] + ".out"), "w") as f:
                 f.write(out)
             bb.note("Generated abidiff for {} in {}".format(xml_fn, cur_abidiff_dir))
-            if abicheck.diff_is_incompatible_change(ret):
+            if abicheck.diff_is_error(ret) or abicheck.diff_is_usage_error(ret):
+                bb.warn("%s: abidiff could not compare %s with the reference, logs: %s" % (pn, sn, out))
+            elif abicheck.diff_is_incompatible_change(ret):
                 oe.qa.handle_error("abi-changed",
                     "%s: ABI incompatibly changed from reference build for %s, logs: %s" % (pn, sn, out), d)
             elif abicheck.diff_is_change(ret):
