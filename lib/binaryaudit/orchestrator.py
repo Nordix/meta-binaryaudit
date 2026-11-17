@@ -1,4 +1,7 @@
 #!/usr/bin/python3
+# Copyright (C) 2021 Anatol Belski
+#
+# SPDX-License-Identifier: MIT
 
 from binaryaudit.db import wrapper as db_wrapper
 
