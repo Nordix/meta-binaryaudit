@@ -4,12 +4,57 @@
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tarfile
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
+
+_ABIXML_VERSION_RE = re.compile(r"<abi-corpus[^>]*\sversion=['\"](\d+)\.")
+
+
+def get_abixml_major(xml_path):
+    """Return the ABIXML format major version of a dump, or None."""
+    try:
+        with open(xml_path, 'r', errors='replace') as f:
+            m = _ABIXML_VERSION_RE.search(f.read(4096))
+    except OSError:
+        return None
+    return int(m.group(1)) if m else None
+
+
+def get_abidiff_major(abidiff_path):
+    """Return the major version of abidiff, or None if it cannot be run."""
+    try:
+        out = subprocess.run([abidiff_path, '--version'], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    m = re.search(r'(\d+)\.\d+', out)
+    return int(m.group(1)) if m else None
+
+
+def check_abixml_versions(old_files, new_files, abidiff_path):
+    """Return an error message if abidiff cannot compare the dumps correctly.
+
+    abidiff refuses to compare dumps of different major format versions,
+    and an older abidiff reads dumps from a newer libabigail without an
+    error but misses changes, so both cases are rejected up front.
+    """
+    old = {get_abixml_major(p) for p, _ in old_files.values()} - {None}
+    new = {get_abixml_major(p) for p, _ in new_files.values()} - {None}
+    if old and new and old != new:
+        return ("reference dumps use ABIXML format {} but current dumps use {}; "
+                "regenerate the reference with the same libabigail major version"
+                .format(sorted(old), sorted(new)))
+    tool = get_abidiff_major(abidiff_path)
+    newest = max(old | new, default=None)
+    if tool is not None and newest is not None and tool < newest:
+        return ("abidiff {} is older than the ABIXML format {}.x of the dumps; "
+                "use libabigail {}.x or newer".format(tool, newest, newest))
+    return None
+
 
 def get_soname(xml_path):
     """Extract soname from ABI XML file."""
@@ -201,6 +246,11 @@ def _run_compare(args, ref_name, ref_path, cur_name, cur_path):
         for key in sorted(new_files.keys()):
             print(f"  {key}")
         return 0
+
+    error = check_abixml_versions(old_files, new_files, args.abidiff)
+    if error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     
     def base_key(pkg, arch, soname):
         return f"{pkg}/{arch}/{soname.split('.so')[0]}.so"
