@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Ericsson Software Technology AB
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: MIT
 import re
 import json
 import sys

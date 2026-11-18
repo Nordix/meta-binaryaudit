@@ -1,9 +1,7 @@
 # Contributing to meta-binaryaudit
 
-`meta-binaryaudit` is an open source project. The layer metadata and the
-Python module under `lib/` are licensed under [MIT](https://opensource.org/licenses/MIT),
-everything under `scripts/` is licensed under
-[GPL-2.0-only](https://opensource.org/licenses/GPL-2.0). See README.md.
+`meta-binaryaudit` is an open source project licensed under
+[MIT](https://opensource.org/licenses/MIT). See README.md.
 
 ## Coding Style
 
