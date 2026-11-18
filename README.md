@@ -19,11 +19,7 @@ commit message format.
 
 # License
 
-The layer metadata (classes, conf, recipes) and the Python module under `lib/`
-are MIT licensed, see `LICENSE.MIT`.
-
-Everything under `scripts/` is GPL-2.0-only, see `LICENSE.GPL-2.0-only`. The
-source files there carry an SPDX license identifier.
+All files in this layer are MIT licensed, see `LICENSE.MIT`.
 
 # ABI compliance
 

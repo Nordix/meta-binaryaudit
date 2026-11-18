@@ -1,8 +1,3 @@
-# Copyright (C) 2021 Anatol Belski
-# Copyright (C) 2026 Ericsson Software Technology AB
-#
-# SPDX-License-Identifier: MIT
-
 import json
 import os
 import subprocess
