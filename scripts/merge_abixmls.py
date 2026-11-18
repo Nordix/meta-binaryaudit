@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Ericsson Software Technology AB
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: MIT
 #
 # Merge multiple per-arch abixmls.tar.zst archives (one per CI arch build)
 # into a single archive that abi_compare.py can consume transparently.

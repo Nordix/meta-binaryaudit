@@ -1,7 +1,3 @@
-# Copyright (C) 2021 Anatol Belski
-#
-# SPDX-License-Identifier: MIT
-
 import subprocess
 
 
