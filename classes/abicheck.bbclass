@@ -109,6 +109,9 @@ def package_qa_binary_audit_abixml_compare_to_ref(pn, d, messages=None):
     import oe.qa
     from binaryaudit import abicheck
 
+    if d.getVar('ABI_CHECK_SKIP') == '1':
+        return
+
     # Ensure native sysroot binaries (abidiff, abidw) are in PATH
     native_bindir = os.path.join(d.getVar("RECIPE_SYSROOT_NATIVE"), "usr", "bin")
     # Also check the shared native sysroot components for libabigail-native
