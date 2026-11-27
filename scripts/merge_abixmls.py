@@ -33,6 +33,10 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+# Use tarfile's "data" filter when available: it also rejects links pointing
+# outside the destination, absolute paths and device files.
+_TAR_FILTER = {'filter': 'data'} if hasattr(tarfile, 'data_filter') else {}
+
 
 def _open_zst_tar(path, mode):
     """Open a .tar.zst file for reading or writing via the zstandard module."""
@@ -74,11 +78,11 @@ def _extract_to(src_path, dest_dir):
         extracted_names = set()
         for member in tar:
             target = (dest / member.name).resolve()
-            if not str(target).startswith(str(dest)):
+            if not target.is_relative_to(dest):
                 raise ValueError(f"Unsafe tar entry rejected: {member.name}")
             if member.name in extracted_names:
                 continue  # skip intra-archive duplicates silently
-            tar.extract(member, dest_dir)
+            tar.extract(member, dest_dir, **_TAR_FILTER)
             extracted.append(member.name)
             extracted_names.add(member.name)
 
