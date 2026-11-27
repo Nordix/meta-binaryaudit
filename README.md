@@ -2,6 +2,9 @@
 
 Yocto layer for ELF binary compliance validation.
 
+This layer is a fork of https://github.com/clio-project/meta-binaryaudit
+with further changes.
+
 # Dependencies
 
 * URI: https://git.openembedded.org/openembedded-core
